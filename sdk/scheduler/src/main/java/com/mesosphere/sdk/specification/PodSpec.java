@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.mesosphere.sdk.offer.evaluate.placement.PlacementRule;
 import com.mesosphere.sdk.specification.util.RLimit;
+import org.glassfish.jersey.server.JSONP;
 
 import java.net.URI;
 import java.util.Collection;
@@ -51,6 +52,9 @@ public interface PodSpec {
 
     @JsonProperty("secrets")
     Collection<SecretSpec> getSecrets();
+
+    @JsonProperty("transport-encryption")
+    Optional<TransportEncryptionSpec> getTransportEncryption();
 
     @JsonIgnore
     static String getName(PodSpec podSpec, int index) {
