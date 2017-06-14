@@ -31,6 +31,7 @@ ext {
     mustacheVer = "0.9.2"
     hibernateValidatorVer = "5.3.2.Final"
     elVer = "2.2.4"
+    jwtVer = "3.2.0"
 }
 
 task sourceJar(type: Jar) {
@@ -102,6 +103,7 @@ dependencies {
     compile "javax.el:javax.el-api:${elVer}"
     compile "org.glassfish.web:javax.el:${elVer}"
     compile 'com.mesosphere:mesos-http-adapter:0.4.1'
+    compile "com.auth0:java-jwt:${jwtVer}"
     testCompile "org.hamcrest:hamcrest-all:${hamcrestVer}" // note: must be above junit
     testCompile "junit:junit:${junitVer}"
     testCompile "com.github.stefanbirkner:system-rules:${systemRulesVer}"
