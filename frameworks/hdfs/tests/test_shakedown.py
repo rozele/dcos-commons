@@ -9,6 +9,7 @@ import sdk_install as install
 import sdk_marathon as marathon
 import sdk_plan as plan
 import sdk_tasks as tasks
+import sdk_test_upgrade
 import sdk_utils
 from tests.config import (
     PACKAGE_NAME,
@@ -303,6 +304,18 @@ def test_modify_app_config_rollback():
 
     # Data tasks should not have been affected
     tasks.check_tasks_not_updated(PACKAGE_NAME, 'data', data_ids)
+
+
+@pytest.mark.upgrade
+@pytest.mark.sanity
+def test_upgrade_downgrade():
+    options = {
+        "service": {
+            "beta-optin": True
+        }
+    }
+    sdk_test_upgrade.upgrade_downgrade("beta-{}".format(PACKAGE_NAME), PACKAGE_NAME, DEFAULT_TASK_COUNT,
+                                       additional_options=options)
 
 
 def replace_name_node(index):
