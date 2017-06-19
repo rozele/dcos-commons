@@ -6,7 +6,6 @@ import com.mesosphere.sdk.dcos.SecretsClient;
 import org.apache.http.StatusLine;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
-import org.apache.http.client.fluent.Response;
 import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
 
@@ -21,30 +20,20 @@ public class DefaultSecretsClient implements SecretsClient {
 
     private URL baseUrl;
     private String store;
-    private String token;
+    private Executor httpExecutor;
 
-    // Executor of HTTP requests, can be overridden mainly for testing purposes.
-    private Executor executor;
-
-    public DefaultSecretsClient(URL baseUrl, String token, String store, Executor executor) throws MalformedURLException {
-        // TODO(mh): This token is valid only for limited time, it would be better to accept a factory that can
-        // fetch and reissue token to be always valid.
-        this.token = token;
+    public DefaultSecretsClient(URL baseUrl, String store, Executor executor) throws MalformedURLException {
         this.baseUrl = new URL(baseUrl, String.format(STORE_PREFIX, store));
         this.store = store;
-        this.executor = executor;
+        this.httpExecutor = executor;
     }
 
-    public DefaultSecretsClient(URL baseUrl, String token, String store) throws MalformedURLException {
-        this(baseUrl, token, store, Executor.newInstance());
+    public DefaultSecretsClient(String store, Executor executor) throws MalformedURLException {
+        this(new URL(DcosConstants.SECRETS_BASE_URI), store, executor);
     }
 
-    public DefaultSecretsClient(String token, String store) throws MalformedURLException {
-        this(new URL(DcosConstants.SECRETS_BASE_URI), token, store);
-    }
-
-    public DefaultSecretsClient(String token) throws MalformedURLException {
-        this(token, "default");
+    public DefaultSecretsClient(Executor executor) throws MalformedURLException {
+        this("default", executor);
     }
 
     @Override
@@ -52,7 +41,7 @@ public class DefaultSecretsClient implements SecretsClient {
         JSONObject body = secretToJSONObject(secret);
         Request httpRequest = Request.Put(urlForPath(path).toString())
                 .bodyString(body.toString(), ContentType.APPLICATION_JSON);
-        StatusLine statusLine = executeRequest(httpRequest).returnResponse().getStatusLine();
+        StatusLine statusLine = httpExecutor.execute(httpRequest).returnResponse().getStatusLine();
 
         handleResponseStatusLine(statusLine, 201, path);
     }
@@ -60,7 +49,7 @@ public class DefaultSecretsClient implements SecretsClient {
     @Override
     public void delete(String path) throws IOException, SecretsException {
         Request httpRequest = Request.Delete(urlForPath(path).toString());
-        StatusLine statusLine = executeRequest(httpRequest).returnResponse().getStatusLine();
+        StatusLine statusLine = httpExecutor.execute(httpRequest).returnResponse().getStatusLine();
         handleResponseStatusLine(statusLine, 204, path);
     }
 
@@ -69,7 +58,7 @@ public class DefaultSecretsClient implements SecretsClient {
         JSONObject body = secretToJSONObject(secret);
         Request httpRequest = Request.Patch(urlForPath(path).toString())
                 .bodyString(body.toString(), ContentType.APPLICATION_JSON);
-        StatusLine statusLine = executeRequest(httpRequest).returnResponse().getStatusLine();
+        StatusLine statusLine = httpExecutor.execute(httpRequest).returnResponse().getStatusLine();
 
         handleResponseStatusLine(statusLine, 204, path);
     }
@@ -83,10 +72,6 @@ public class DefaultSecretsClient implements SecretsClient {
         return new URL(this.baseUrl, path);
     }
 
-    protected Response executeRequest(Request request) throws IOException {
-        request = request.addHeader("Authorization", String.format("token=%s", this.token));
-        return executor.execute(request);
-    }
 
     protected JSONObject secretToJSONObject(Secret secret) {
         JSONObject body = new JSONObject();
@@ -126,8 +111,4 @@ public class DefaultSecretsClient implements SecretsClient {
         throw new SecretsException();
     }
 
-    @VisibleForTesting
-    protected void setExecutor(Executor executor) {
-        this.executor = executor;
-    }
 }

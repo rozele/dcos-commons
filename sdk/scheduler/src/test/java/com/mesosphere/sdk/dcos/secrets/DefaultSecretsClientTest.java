@@ -39,8 +39,7 @@ public class DefaultSecretsClientTest {
     }
 
     private DefaultSecretsClient createClientWithStatusLine(StatusLine statusLine) throws IOException {
-        DefaultSecretsClient client = new DefaultSecretsClient("test-token");
-        client.setExecutor(Executor.newInstance(httpClient));
+        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
 
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpClient.execute(
@@ -49,6 +48,7 @@ public class DefaultSecretsClientTest {
 
         return client;
     }
+
 
     private Secret createValidSecret() {
         return new Secret.Builder()
@@ -74,9 +74,6 @@ public class DefaultSecretsClientTest {
 
         Assert.assertEquals(request.getMethod(), "PUT");
         Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
-
-        String authHeaderValue = request.getFirstHeader("Authorization").getValue();
-        Assert.assertEquals(authHeaderValue, "token=test-token");
 
         Assert.assertTrue(request instanceof HttpEntityEnclosingRequest);
         HttpEntity httpEntity = ((HttpEntityEnclosingRequest)request).getEntity();
@@ -129,9 +126,6 @@ public class DefaultSecretsClientTest {
         Assert.assertEquals(request.getMethod(), "PATCH");
         Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
 
-        String authHeaderValue = request.getFirstHeader("Authorization").getValue();
-        Assert.assertEquals(authHeaderValue, "token=test-token");
-
         Assert.assertTrue(request instanceof HttpEntityEnclosingRequest);
         HttpEntity httpEntity = ((HttpEntityEnclosingRequest)request).getEntity();
 
@@ -180,21 +174,18 @@ public class DefaultSecretsClientTest {
 
         Assert.assertEquals(request.getMethod(), "DELETE");
         Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
-
-        String authHeaderValue = request.getFirstHeader("Authorization").getValue();
-        Assert.assertEquals(authHeaderValue, "token=test-token");
     }
 
     @Test
     public void testUrlForPath() throws IOException {
-        DefaultSecretsClient client = new DefaultSecretsClient("test-token");
+        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
         URL url = client.urlForPath("test/one");
         Assert.assertEquals(url.toString(), "http://master.mesos/secrets/v1/secrets/default/test/one");
     }
 
     @Test
     public void testUrlForPathWithPrefix() throws IOException {
-        DefaultSecretsClient client = new DefaultSecretsClient("test-token");
+        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
         URL url = client.urlForPath("/test/one");
         Assert.assertEquals(url.toString(), "http://master.mesos/secrets/v1/secrets/default/test/one");
     }

@@ -2,55 +2,48 @@ package com.mesosphere.sdk.dcos.auth;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import org.apache.http.client.HttpClient;
+import com.mesosphere.sdk.dcos.HttpClientBuilder;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
-import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.entity.ContentType;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.client.HttpClients;
 import org.json.JSONObject;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.net.URL;
 import java.security.KeyFactory;
-import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
-import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.RSAPublicKeySpec;
 import java.time.Instant;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Provides a token retrieved by `login` operation against IAM service with given service account.
  *
  * For reference implementation
- * @see https://github.com/mesosphere/bouncer/blob/fc4e0f4205112f3a9bc2b10bb4639d9985beb19e/lynch/lynch/auth.py#L63
+ * @see "https://github.com/mesosphere/bouncer/blob/fc4e0f4205112f3a9bc2b10bb4639d9985beb19e/lynch/lynch/auth.py#L63"
  */
 public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
     private URL iamUrl;
     private String uid;
     private RSAPrivateKey privateKey;
-    private boolean disableTLSVerification;
-    private final long connectionTimeoutMs;
+    private Executor httpExecutor;
 
     public ServiceAccountIAMTokenProvider(
-            URL iamUrl, String uid, RSAPrivateKey privateKey, boolean disableTLSVerification, long connectionTimeoutMs) {
+            URL iamUrl,
+            String uid,
+            RSAPrivateKey privateKey,
+            Executor executor) {
         this.iamUrl = iamUrl;
         this.uid = uid;
         this.privateKey = privateKey;
-        this.disableTLSVerification = disableTLSVerification;
-        this.connectionTimeoutMs = connectionTimeoutMs;
+        this.httpExecutor = executor;
     }
 
     public ServiceAccountIAMTokenProvider(Builder builder) {
@@ -58,8 +51,7 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
                 builder.iamUrl,
                 builder.uid,
                 builder.privateKey,
-                builder.disableTLSVerification,
-                builder.connectionTimeoutMs
+                builder.buildExecutor()
         );
     }
 
@@ -81,53 +73,13 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
         data.put("uid", uid);
         data.put("token", serviceLoginToken);
 
-        Executor executor = Executor.newInstance(createHttpClient());
         Request request = Request.Post(iamUrl.toString())
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
-        Response response = executor.execute(request);
+
+        Response response = httpExecutor.execute(request);
 
         JSONObject resposneData = new JSONObject(response.returnContent().asString());
         return new Token(resposneData.getString("token"));
-    }
-
-    // TODO(mh): Extract this to common base class or static class that can be used across different
-    //           service consumers.
-    private HttpClient createHttpClient() {
-        HttpClientBuilder builder = HttpClients.custom();
-
-        if (this.disableTLSVerification) {
-            TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
-                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                    return null;
-                }
-
-                public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                }
-
-                public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                }
-
-            }};
-
-            SSLContext sslContext = null;
-            try {
-                sslContext = SSLContext.getInstance("TLS");
-            } catch (NoSuchAlgorithmException e) {
-            }
-
-            try {
-                sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
-            } catch (KeyManagementException e) {
-                e.printStackTrace();
-            }
-            builder
-                    .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
-                    .setSSLContext(sslContext);
-        }
-
-        builder.setConnectionTimeToLive(connectionTimeoutMs, TimeUnit.MILLISECONDS);
-
-        return builder.build();
     }
 
     /**
@@ -148,11 +100,11 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
         private String uid;
         private RSAPrivateKey privateKey;
         private boolean disableTLSVerification;
-        private long connectionTimeoutMs;
+        private int connectionTimeout;
 
         public Builder() {
             this.disableTLSVerification = false;
-            this.connectionTimeoutMs = 5*1000;
+            this.connectionTimeout = 5;
         }
 
         public Builder setIamUrl(URL iamUrl) {
@@ -175,9 +127,25 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
             return this;
         }
 
-        public Builder setConnectionTimeoutMs(long connectionTimeoutMs) {
-            this.connectionTimeoutMs = connectionTimeoutMs;
+        public Builder setConnectionTimeout(int connectionTimeout) {
+            this.connectionTimeout = connectionTimeout;
             return this;
+        }
+
+        public Executor buildExecutor() {
+
+            HttpClientBuilder httpClientBuilder = new HttpClientBuilder();
+
+            if (disableTLSVerification) {
+                httpClientBuilder.disableTLSVerification();
+            }
+
+            if (connectionTimeout > 0) {
+                httpClientBuilder.setDefaultConnectionTimeout(connectionTimeout);
+            }
+
+            return Executor.newInstance(httpClientBuilder.build());
+
         }
 
         public ServiceAccountIAMTokenProvider build() {
