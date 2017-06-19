@@ -67,7 +67,7 @@ public class HttpClientBuilder extends org.apache.http.impl.client.HttpClientBui
         this.addInterceptorFirst(new HttpRequestInterceptor() {
             @Override
             public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
-                request.addHeader("Authorization", String.format("token=%s", provider.getToken()));
+                request.addHeader("Authorization", String.format("token=%s", provider.getToken().getValue()));
             }
         });
 
