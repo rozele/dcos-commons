@@ -176,18 +176,4 @@ public class DefaultSecretsClientTest {
         Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
     }
 
-    @Test
-    public void testUrlForPath() throws IOException {
-        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
-        URL url = client.urlForPath("test/one");
-        Assert.assertEquals(url.toString(), "http://master.mesos/secrets/v1/secrets/default/test/one");
-    }
-
-    @Test
-    public void testUrlForPathWithPrefix() throws IOException {
-        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
-        URL url = client.urlForPath("/test/one");
-        Assert.assertEquals(url.toString(), "http://master.mesos/secrets/v1/secrets/default/test/one");
-    }
-
 }

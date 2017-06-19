@@ -2,8 +2,7 @@ package com.mesosphere.sdk.dcos.auth;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.mesosphere.sdk.dcos.HttpClientBuilder;
-import org.apache.http.client.config.RequestConfig;
+import com.mesosphere.sdk.dcos.http.HttpClientBuilder;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;

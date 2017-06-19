@@ -3,6 +3,7 @@ package com.mesosphere.sdk.dcos.secrets;
 import com.google.common.annotations.VisibleForTesting;
 import com.mesosphere.sdk.dcos.DcosConstants;
 import com.mesosphere.sdk.dcos.SecretsClient;
+import com.mesosphere.sdk.dcos.http.URLHelper;
 import org.apache.http.StatusLine;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
@@ -10,7 +11,6 @@ import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URL;
 
 public class DefaultSecretsClient implements SecretsClient {
@@ -22,17 +22,17 @@ public class DefaultSecretsClient implements SecretsClient {
     private String store;
     private Executor httpExecutor;
 
-    public DefaultSecretsClient(URL baseUrl, String store, Executor executor) throws MalformedURLException {
-        this.baseUrl = new URL(baseUrl, String.format(STORE_PREFIX, store));
+    public DefaultSecretsClient(URL baseUrl, String store, Executor executor) {
+        this.baseUrl = URLHelper.addPathUnchecked(baseUrl, String.format(STORE_PREFIX, store));
         this.store = store;
         this.httpExecutor = executor;
     }
 
-    public DefaultSecretsClient(String store, Executor executor) throws MalformedURLException {
-        this(new URL(DcosConstants.SECRETS_BASE_URI), store, executor);
+    public DefaultSecretsClient(String store, Executor executor) {
+        this(URLHelper.fromUnchecked(DcosConstants.SECRETS_BASE_URI), store, executor);
     }
 
-    public DefaultSecretsClient(Executor executor) throws MalformedURLException {
+    public DefaultSecretsClient(Executor executor) {
         this("default", executor);
     }
 
@@ -64,12 +64,8 @@ public class DefaultSecretsClient implements SecretsClient {
     }
 
     @VisibleForTesting
-    protected URL urlForPath(String path) throws MalformedURLException {
-        if (path.startsWith("/")) {
-            path = path.substring(1);
-        }
-
-        return new URL(this.baseUrl, path);
+    protected URL urlForPath(String path) {
+        return URLHelper.addPathUnchecked(baseUrl, path);
     }
 
 

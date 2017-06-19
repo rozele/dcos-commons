@@ -1,8 +1,8 @@
 package com.mesosphere.sdk.dcos.ca;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.mesosphere.sdk.dcos.CertificateAuthorityClient;
 import com.mesosphere.sdk.dcos.DcosConstants;
+import com.mesosphere.sdk.dcos.http.URLHelper;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
@@ -11,7 +11,6 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
@@ -34,8 +33,8 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         }
     }
 
-    public DefaultCAClient(Executor executor) throws MalformedURLException {
-        this(new URL(DcosConstants.CA_BASE_URI), executor);
+    public DefaultCAClient(Executor executor) {
+        this(URLHelper.fromUnchecked(DcosConstants.CA_BASE_URI), executor);
     }
 
     @Override
@@ -44,18 +43,9 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         data.put("certificate_request", new String(csr));
         data.put("profile", "");
 
-        URL url = null;
-        try {
-            url = urlForPath("sign");
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        }
-
-        Request request = Request.Post(url.toString())
+        Request request = Request.Post(urlForPath("sign").toString())
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
         Response response = httpExecutor.execute(request);
-
-
 
         String responseContent = response.returnContent().asString();
         data = new JSONObject(responseContent);
@@ -65,13 +55,8 @@ public class DefaultCAClient implements CertificateAuthorityClient {
                 .generateCertificate(new ByteArrayInputStream(certificate.getBytes()));
     }
 
-    @VisibleForTesting
-    protected URL urlForPath(String path) throws MalformedURLException {
-        if (path.startsWith("/")) {
-            path = path.substring(1);
-        }
-
-        return new URL(this.baseURL, path);
+    protected URL urlForPath(String path) {
+        return URLHelper.addPathUnchecked(this.baseURL, path);
     }
 
 }

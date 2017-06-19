@@ -1,6 +1,6 @@
 package com.mesosphere.sdk.dcos.ca;
 
-import com.mesosphere.sdk.dcos.HttpClientBuilder;
+import com.mesosphere.sdk.dcos.http.HttpClientBuilder;
 import com.mesosphere.sdk.dcos.auth.StaticTokenProvider;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.fluent.Executor;
@@ -52,6 +52,7 @@ public class DefaultCAClientTest {
 
     }
 
+    // TODO(mh): Run with a CA container?
     @Ignore
     @Test
     public void testSign() throws Exception {

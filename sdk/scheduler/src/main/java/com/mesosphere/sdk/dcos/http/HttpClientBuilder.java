@@ -1,4 +1,4 @@
-package com.mesosphere.sdk.dcos;
+package com.mesosphere.sdk.dcos.http;
 
 import com.mesosphere.sdk.dcos.auth.TokenProvider;
 import org.apache.http.HttpException;
