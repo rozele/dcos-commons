@@ -17,6 +17,7 @@ public class DcosConstants {
     public static final String MESOS_MASTER_URI = "http://" + MESOS_MASTER;
     public static final String SECRETS_BASE_URI = MESOS_MASTER_URI + "/secrets/v1/";
     public static final String CA_BASE_URI = MESOS_MASTER_URI + "/ca/api/v2/";
+    public static final String IAM_AUTH_URL = MESOS_MASTER_URI + "/acs/api/v1/auth/login";
     public static final Boolean DEFAULT_GPU_POLICY = true;
     public static final String DEFAULT_IP_PROTOCOL = "tcp";
     public static final String DEFAULT_OVERLAY_NETWORK = "dcos";
