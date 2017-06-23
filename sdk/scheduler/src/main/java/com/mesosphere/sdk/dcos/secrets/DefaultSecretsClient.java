@@ -16,7 +16,7 @@ import java.net.URL;
 public class DefaultSecretsClient implements SecretsClient {
 
     // Each secrets requests is prefixed with secrets store name
-    public static final String STORE_PREFIX = "secrets/%s/";
+    public static final String STORE_PREFIX = "secret/%s/";
 
     private URL baseUrl;
     private String store;
@@ -92,7 +92,7 @@ public class DefaultSecretsClient implements SecretsClient {
         }
 
         if (statusLine.getStatusCode() == 403) {
-            throw new ForbiddenException(this.store, path);
+            throw new ForbiddenException(store, path);
         }
 
         if (statusLine.getStatusCode() == 404) {

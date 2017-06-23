@@ -73,7 +73,7 @@ public class DefaultSecretsClientTest {
         HttpUriRequest request = passedRequest.getValue();
 
         Assert.assertEquals(request.getMethod(), "PUT");
-        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
+        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secret/default/scheduler-name/secret-name");
 
         Assert.assertTrue(request instanceof HttpEntityEnclosingRequest);
         HttpEntity httpEntity = ((HttpEntityEnclosingRequest)request).getEntity();
@@ -124,7 +124,7 @@ public class DefaultSecretsClientTest {
         HttpUriRequest request = passedRequest.getValue();
 
         Assert.assertEquals(request.getMethod(), "PATCH");
-        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
+        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secret/default/scheduler-name/secret-name");
 
         Assert.assertTrue(request instanceof HttpEntityEnclosingRequest);
         HttpEntity httpEntity = ((HttpEntityEnclosingRequest)request).getEntity();
@@ -173,7 +173,7 @@ public class DefaultSecretsClientTest {
         HttpUriRequest request = passedRequest.getValue();
 
         Assert.assertEquals(request.getMethod(), "DELETE");
-        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secrets/default/scheduler-name/secret-name");
+        Assert.assertEquals(request.getURI().getPath(), "/secrets/v1/secret/default/scheduler-name/secret-name");
     }
 
 }

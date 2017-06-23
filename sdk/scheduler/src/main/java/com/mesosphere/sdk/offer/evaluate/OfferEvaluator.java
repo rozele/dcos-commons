@@ -287,7 +287,7 @@ public class OfferEvaluator {
 
             // TODO(mh): Improve error handling
             try {
-                evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName));
+                evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName, taskName));
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (InvalidKeySpecException e) {

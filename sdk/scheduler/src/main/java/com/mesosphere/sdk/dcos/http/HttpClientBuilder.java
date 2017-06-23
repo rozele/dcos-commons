@@ -7,6 +7,7 @@ import org.apache.http.HttpRequestInterceptor;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.protocol.HttpContext;
+import org.slf4j.Logger;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -68,6 +69,20 @@ public class HttpClientBuilder extends org.apache.http.impl.client.HttpClientBui
             @Override
             public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
                 request.addHeader("Authorization", String.format("token=%s", provider.getToken().getValue()));
+            }
+        });
+
+        return this;
+
+    }
+
+
+    public HttpClientBuilder setLogger(Logger logger) {
+
+        this.addInterceptorLast(new HttpRequestInterceptor() {
+            @Override
+            public void process(HttpRequest request, HttpContext context) throws HttpException, IOException {
+                logger.info(request.toString());
             }
         });
 

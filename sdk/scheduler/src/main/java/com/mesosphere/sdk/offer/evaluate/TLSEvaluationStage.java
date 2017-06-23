@@ -15,6 +15,7 @@ import com.mesosphere.sdk.dcos.secrets.SecretsException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import org.apache.http.client.fluent.Executor;
+import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.apache.mesos.Protos;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -31,10 +32,10 @@ import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
 
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.StringReader;
-import java.io.StringWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.*;
 import java.security.*;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
@@ -45,20 +46,24 @@ import java.util.*;
 
 public class TLSEvaluationStage implements OfferEvaluationStage {
 
+    private static final Logger LOGGER = (Logger) LoggerFactory.getLogger(TLSEvaluationStage.class);
+
     private String serviceName;
+    private String taskName;
     private CertificateAuthorityClient certificateAuthorityClient;
     private SecretsClient secretsClient;
     private KeyPairGenerator keyPairGenerator;
 
     public TLSEvaluationStage(
-            String serviceName, CertificateAuthorityClient certificateAuthorityClient, SecretsClient secretsClient, KeyPairGenerator keyPairGenerator) {
+            String serviceName, String taskName, CertificateAuthorityClient certificateAuthorityClient, SecretsClient secretsClient, KeyPairGenerator keyPairGenerator) {
         this.serviceName = serviceName;
+        this.taskName = taskName;
         this.certificateAuthorityClient = certificateAuthorityClient;
         this.secretsClient = secretsClient;
         this.keyPairGenerator = keyPairGenerator;
     }
 
-    public static TLSEvaluationStage fromEnvironmentForService(String serviceName) throws IOException, InvalidKeySpecException {
+    public static TLSEvaluationStage fromEnvironmentForService(String serviceName, String taskName) throws IOException, InvalidKeySpecException {
 
         SchedulerFlags flags = SchedulerFlags.fromEnv();
 
@@ -83,6 +88,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         Executor executor = Executor.newInstance(
                 new HttpClientBuilder()
                         .setTokenProvider(tokenProvider)
+                        .setLogger(LOGGER)
+                        .setRedirectStrategy(new LaxRedirectStrategy())
                         .build());
 
         CertificateAuthorityClient certificateAuthorityClient = new DefaultCAClient(executor);
@@ -95,7 +102,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
             e.printStackTrace();
         }
 
-        return new TLSEvaluationStage(serviceName, certificateAuthorityClient, secretsClient, keyPairGenerator);
+        return new TLSEvaluationStage(serviceName, taskName, certificateAuthorityClient, secretsClient, keyPairGenerator);
 
     }
 
@@ -103,7 +110,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
     public EvaluationOutcome evaluate(MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
 
         if (!podInfoBuilder.getPodInstance().getPod().getTransportEncryption().isPresent()) {
-            return EvaluationOutcome.pass(this, "Not requested TLS certificate.");
+            return EvaluationOutcome.pass(this, null, "Not requested TLS certificate.");
         }
 
         // Generate new private key and encode it to PEM
@@ -120,19 +127,26 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
         }
         catch (Exception e) {
-            return EvaluationOutcome.fail(this, "Failed because of exception: %s", e);
+            StringWriter stackTraceString = new StringWriter();
+            e.printStackTrace(new PrintWriter(stackTraceString));
+            return EvaluationOutcome.fail(this, null,"Failed because of exception: %s", stackTraceString);
         }
 
         Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(podInfoBuilder);
+        LOGGER.info(String.valueOf(volumes));
 
         // Share keys to the container
-        podInfoBuilder.getTaskBuilders().stream()
-                .forEach(builder -> builder
-                        .getExecutorBuilder()
-                        .getContainerBuilder()
-                        .addAllVolumes(volumes));
+        Optional<Protos.ExecutorInfo.Builder> executorBuilder = podInfoBuilder.getExecutorBuilder();
+        Protos.TaskInfo.Builder taskBuilder = podInfoBuilder.getTaskBuilder(taskName);
+        if (executorBuilder.isPresent()) {
+            executorBuilder.get()
+                    .getContainerBuilder()
+                    .setType(Protos.ContainerInfo.Type.MESOS)
+                    .addAllVolumes(volumes);
+            taskBuilder.setExecutor(executorBuilder.get());
+        }
 
-        return EvaluationOutcome.pass(this, "TLS certificate created and exposed");
+        return EvaluationOutcome.pass(this, null, "TLS certificate created and exposed");
 
     }
 
@@ -146,12 +160,12 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
         HashMap<String, String> tlsSecrets = new HashMap<>();
         tlsSecrets.put(
-                getSecretPath(podInfoBuilder, "certificate.crt"),
-                String.format("/%s.cert", filenameInContainer));
+                getSecretPath(podInfoBuilder, "certificate-crt"),
+                String.format("%s.crt", filenameInContainer));
 
         tlsSecrets.put(
-                getSecretPath(podInfoBuilder, "private.key"),
-                String.format("/%s.key", filenameInContainer));
+                getSecretPath(podInfoBuilder, "private-key"),
+                String.format("%s.key", filenameInContainer));
 
         Collection<Protos.Volume> volumes = new ArrayList<>();
 
@@ -180,12 +194,17 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     private void storeSecrets(
             PodInfoBuilder podInfoBuilder, String certPEM, String privateKeyPEM) throws IOException, SecretsException {
-        secretsClient.create(
-                getSecretPath(podInfoBuilder, "certificate.crt"),
-                buildSecret(certPEM, "PEM encoded certificate"));
+
+        LOGGER.info(String.format("Creating new secret: %s", getSecretPath(podInfoBuilder, "certificate-pem")));
 
         secretsClient.create(
-                getSecretPath(podInfoBuilder, "private.key"),
+                getSecretPath(podInfoBuilder, "certificate-crt"),
+                buildSecret(certPEM, "PEM encoded certificate"));
+
+        LOGGER.info(String.format("Creating new secret: %s", getSecretPath(podInfoBuilder, "private-key")));
+
+        secretsClient.create(
+                getSecretPath(podInfoBuilder, "private-key"),
                 buildSecret(privateKeyPEM, "PEM encoded private key"));
     }
 
@@ -261,7 +280,12 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 .addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
         PKCS10CertificationRequest csr = csrBuilder.build(signer);
 
-        return csr.getEncoded();
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        PemWriter writer = new PemWriter(new OutputStreamWriter(os));
+        writer.writeObject(new JcaMiscPEMGenerator(csr));
+        writer.flush();
+
+        return os.toByteArray();
 
     }
 }
