@@ -13,6 +13,8 @@ import com.mesosphere.sdk.dcos.secrets.DefaultSecretsClient;
 import com.mesosphere.sdk.dcos.secrets.Secret;
 import com.mesosphere.sdk.dcos.secrets.SecretsException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
+import com.mesosphere.sdk.offer.evaluate.security.CertificateNamesGenerator;
+import com.mesosphere.sdk.offer.evaluate.security.CertificateSubjectBuilder;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.impl.client.LaxRedirectStrategy;
@@ -232,7 +234,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     }
 
-    private String certificateToPem(X509Certificate certificate) throws CertificateEncodingException, IOException {
+    private String certificateToPem(X509Certificate certificate) throws IOException {
 
         StringWriter stringWriter = new StringWriter();
 
@@ -244,16 +246,16 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     }
 
-    private byte[] generateCSR(KeyPair keyPair) throws IOException, OperatorCreationException {
-        X500NameBuilder nameBuilder = new X500NameBuilder();
-        nameBuilder.addRDN(BCStyle.CN, "testing");
-        X500Name name = nameBuilder.build();
+    private byte[] generateCSR(
+            KeyPair keyPair) throws IOException, OperatorCreationException {
+
+        CertificateNamesGenerator certificateNamesGenerator = new CertificateNamesGenerator(
+                serviceName);
 
         ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
 
         extensionsGenerator.addExtension(
                 Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
-
 
         extensionsGenerator.addExtension(
                 Extension.extendedKeyUsage,
@@ -264,20 +266,14 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                                 KeyPurposeId.id_kp_serverAuth }
                 ));
 
-        GeneralNames subAtlNames = new GeneralNames(
-                new GeneralName[]{
-                        new GeneralName(GeneralName.dNSName, "test.com"),
-                        new GeneralName(GeneralName.iPAddress, "127.0.0.1"),
-                }
-        );
         extensionsGenerator.addExtension(
-                Extension.subjectAlternativeName, true, subAtlNames);
+                Extension.subjectAlternativeName, true, certificateNamesGenerator.getSANs());
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
                 .build(keyPair.getPrivate());
 
         PKCS10CertificationRequestBuilder csrBuilder = new JcaPKCS10CertificationRequestBuilder(
-                name, keyPair.getPublic())
+                certificateNamesGenerator.getSubject(), keyPair.getPublic())
                 .addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
         PKCS10CertificationRequest csr = csrBuilder.build(signer);
 
