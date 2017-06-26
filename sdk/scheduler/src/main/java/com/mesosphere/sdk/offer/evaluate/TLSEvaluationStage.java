@@ -14,15 +14,11 @@ import com.mesosphere.sdk.dcos.secrets.Secret;
 import com.mesosphere.sdk.dcos.secrets.SecretsException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.offer.evaluate.security.CertificateNamesGenerator;
-import com.mesosphere.sdk.offer.evaluate.security.CertificateSubjectBuilder;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.apache.mesos.Protos;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x500.X500NameBuilder;
-import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
 import org.bouncycastle.operator.ContentSigner;
@@ -33,14 +29,12 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.charset.Charset;
 import java.security.*;
-import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
@@ -263,7 +257,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 new ExtendedKeyUsage(
                         new KeyPurposeId[] {
                                 KeyPurposeId.id_kp_clientAuth,
-                                KeyPurposeId.id_kp_serverAuth }
+                                KeyPurposeId.id_kp_serverAuth
+                        }
                 ));
 
         extensionsGenerator.addExtension(

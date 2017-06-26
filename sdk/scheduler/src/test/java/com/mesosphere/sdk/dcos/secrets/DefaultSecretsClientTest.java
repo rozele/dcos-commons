@@ -21,7 +21,6 @@ import org.mockito.MockitoAnnotations;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.URL;
 import java.util.Arrays;
 
 import static org.mockito.Mockito.verify;

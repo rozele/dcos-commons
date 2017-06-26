@@ -29,7 +29,7 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
     public DcosHttpClientBuilder disableTLSVerification() throws NoSuchAlgorithmException {
 
         TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
-            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+            public X509Certificate[] getAcceptedIssuers() {
                 return null;
             }
 

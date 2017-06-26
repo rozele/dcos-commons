@@ -1,12 +1,9 @@
 package com.mesosphere.sdk.dcos;
 
-import com.mesosphere.sdk.dcos.secrets.AlreadyExistsException;
-import com.mesosphere.sdk.dcos.secrets.ForbiddenException;
 import com.mesosphere.sdk.dcos.secrets.Secret;
 import com.mesosphere.sdk.dcos.secrets.SecretsException;
 
 import java.io.IOException;
-import java.util.List;
 
 /**
  * Client for communicating with DC/OS secret service API.

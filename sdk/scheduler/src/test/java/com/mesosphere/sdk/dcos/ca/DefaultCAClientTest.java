@@ -35,6 +35,8 @@ public class DefaultCAClientTest {
 
     private KeyPairGenerator KEY_PAIR_GENERATOR;
     private int RSA_KEY_SIZE = 2048;
+    @SuppressWarnings("PMD.AvoidUsingHardCodedIP")
+    private String TEST_IP_ADDR = "127.0.0.1";
 
     private URL CA_BASE_URL;
 
@@ -85,7 +87,7 @@ public class DefaultCAClientTest {
         GeneralNames subAtlNames = new GeneralNames(
                 new GeneralName[]{
                         new GeneralName(GeneralName.dNSName, "test.com"),
-                        new GeneralName(GeneralName.iPAddress, "127.0.0.1"),
+                        new GeneralName(GeneralName.iPAddress, TEST_IP_ADDR),
                 }
         );
         extensionsGenerator.addExtension(
