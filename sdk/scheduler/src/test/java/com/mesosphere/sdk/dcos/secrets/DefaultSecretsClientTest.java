@@ -89,7 +89,7 @@ public class DefaultSecretsClientTest {
         Assert.assertEquals(jsonObject.getString("description"), secret.getDescription());
         Assert.assertEquals(jsonObject.getString("created"), secret.getCreated());
         for (Object item : jsonObject.getJSONArray("labels")) {
-           secret.getLabels().contains(item);
+           Assert.assertTrue(secret.getLabels().contains(item));
         }
     }
 
@@ -140,7 +140,7 @@ public class DefaultSecretsClientTest {
         Assert.assertEquals(jsonObject.getString("description"), secret.getDescription());
         Assert.assertEquals(jsonObject.getString("created"), secret.getCreated());
         for (Object item : jsonObject.getJSONArray("labels")) {
-           secret.getLabels().contains(item);
+           Assert.assertTrue(secret.getLabels().contains(item));
         }
     }
 

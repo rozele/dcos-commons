@@ -10,7 +10,7 @@ public class StaticTokenProviderTest {
     @Test
     public void testToken() throws IOException {
         TokenProvider tokenProvider = new StaticTokenProvider("test-token");
-        Assert.assertEquals(tokenProvider.getToken(), "test-token");
+        Assert.assertEquals(tokenProvider.getToken().getValue(), "test-token");
     }
 
 }

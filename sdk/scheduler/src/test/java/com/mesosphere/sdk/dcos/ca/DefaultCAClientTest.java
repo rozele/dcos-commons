@@ -98,7 +98,7 @@ public class DefaultCAClientTest {
         PKCS10CertificationRequest csr = csrBuilder.build(signer);
 
         ByteArrayOutputStream os = new ByteArrayOutputStream();
-        PemWriter writer = new PemWriter(new OutputStreamWriter(os));
+        PemWriter writer = new PemWriter(new OutputStreamWriter(os, "UTF-8"));
         writer.writeObject(new JcaMiscPEMGenerator(csr));
         writer.flush();
 
