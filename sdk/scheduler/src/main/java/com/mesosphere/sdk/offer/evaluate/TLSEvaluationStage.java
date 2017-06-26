@@ -44,9 +44,13 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.*;
 
+/**
+ * A {@link TLSEvaluationStage} is responsible for provisioning X.509 certificates, converting them to
+ * PEM and KeyStore formats and injecting them to the container as a secret.
+ */
 public class TLSEvaluationStage implements OfferEvaluationStage {
 
-    private static final Logger LOGGER = (Logger) LoggerFactory.getLogger(TLSEvaluationStage.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(TLSEvaluationStage.class);
 
     private String serviceName;
     private String taskName;
@@ -55,7 +59,11 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
     private KeyPairGenerator keyPairGenerator;
 
     public TLSEvaluationStage(
-            String serviceName, String taskName, CertificateAuthorityClient certificateAuthorityClient, SecretsClient secretsClient, KeyPairGenerator keyPairGenerator) {
+            String serviceName,
+            String taskName,
+            CertificateAuthorityClient certificateAuthorityClient,
+            SecretsClient secretsClient,
+            KeyPairGenerator keyPairGenerator) {
         this.serviceName = serviceName;
         this.taskName = taskName;
         this.certificateAuthorityClient = certificateAuthorityClient;
@@ -63,7 +71,9 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         this.keyPairGenerator = keyPairGenerator;
     }
 
-    public static TLSEvaluationStage fromEnvironmentForService(String serviceName, String taskName) throws IOException, InvalidKeySpecException {
+    public static TLSEvaluationStage fromEnvironmentForService(
+            String serviceName,
+            String taskName) throws IOException, InvalidKeySpecException {
 
         SchedulerFlags flags = SchedulerFlags.fromEnv();
 
@@ -71,7 +81,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         try {
             keyFactory = KeyFactory.getInstance("RSA");
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            LOGGER.error("Failed to create KeyFactory", e);
         }
 
         PemReader pemReader = new PemReader(new StringReader(flags.getServiceAccountPrivateKeyPEM()));
@@ -88,7 +98,6 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         Executor executor = Executor.newInstance(
                 new HttpClientBuilder()
                         .setTokenProvider(tokenProvider)
-                        .setLogger(LOGGER)
                         .setRedirectStrategy(new LaxRedirectStrategy())
                         .build());
 
@@ -99,19 +108,16 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         try {
             keyPairGenerator = KeyPairGenerator.getInstance("RSA");
         } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            LOGGER.error("Failed to create KeyPairGenerator", e);
         }
 
-        return new TLSEvaluationStage(serviceName, taskName, certificateAuthorityClient, secretsClient, keyPairGenerator);
+        return new TLSEvaluationStage(
+                serviceName, taskName, certificateAuthorityClient, secretsClient, keyPairGenerator);
 
     }
 
     @Override
     public EvaluationOutcome evaluate(MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
-
-        if (!podInfoBuilder.getPodInstance().getPod().getTransportEncryption().isPresent()) {
-            return EvaluationOutcome.pass(this, null, "Not requested TLS certificate.");
-        }
 
         // Generate new private key and encode it to PEM
         // Generate new CSR, sign it, encode certificate to PEM
@@ -124,16 +130,13 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
             String privateKeyPEM = privateKeyToPem(keyPair.getPrivate());
 
             storeSecrets(podInfoBuilder, certPEM, privateKeyPEM);
-
-        }
-        catch (Exception e) {
-            StringWriter stackTraceString = new StringWriter();
-            e.printStackTrace(new PrintWriter(stackTraceString));
-            return EvaluationOutcome.fail(this, null,"Failed because of exception: %s", stackTraceString);
+        } catch (Exception e) {
+            LOGGER.error("Failed to get certificate", e);
+            return EvaluationOutcome.fail(
+                    this, null, "Failed because of exception: %s", e);
         }
 
         Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(podInfoBuilder);
-        LOGGER.info(String.valueOf(volumes));
 
         // Share keys to the container
         Optional<Protos.ExecutorInfo.Builder> executorBuilder = podInfoBuilder.getExecutorBuilder();
@@ -146,7 +149,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
             taskBuilder.setExecutor(executorBuilder.get());
         }
 
-        return EvaluationOutcome.pass(this, null, "TLS certificate created and exposed");
+        return EvaluationOutcome.pass(
+                this, null, "TLS certificate created and added to the pod");
 
     }
 
@@ -245,7 +249,6 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
     }
 
     private byte[] generateCSR(KeyPair keyPair) throws IOException, OperatorCreationException {
-
         X500NameBuilder nameBuilder = new X500NameBuilder();
         nameBuilder.addRDN(BCStyle.CN, "testing");
         X500Name name = nameBuilder.build();
@@ -274,9 +277,11 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         extensionsGenerator.addExtension(
                 Extension.subjectAlternativeName, true, subAtlNames);
 
-        ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA").build(keyPair.getPrivate());
+        ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
+                .build(keyPair.getPrivate());
 
-        PKCS10CertificationRequestBuilder csrBuilder = new JcaPKCS10CertificationRequestBuilder(name, keyPair.getPublic())
+        PKCS10CertificationRequestBuilder csrBuilder = new JcaPKCS10CertificationRequestBuilder(
+                name, keyPair.getPublic())
                 .addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
         PKCS10CertificationRequest csr = csrBuilder.build(signer);
 
@@ -286,6 +291,5 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         writer.flush();
 
         return os.toByteArray();
-
     }
 }

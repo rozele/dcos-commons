@@ -285,13 +285,20 @@ public class OfferEvaluator {
                         new VolumeEvaluationStage(volumeSpec, taskName, Optional.empty(), Optional.empty()));
             }
 
-            // TODO(mh): Improve error handling
-            try {
-                evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName, taskName));
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (InvalidKeySpecException e) {
-                e.printStackTrace();
+            if (podInstanceRequirement.getPodInstance().getPod().getTransportEncryption().isPresent()) {
+                try {
+                    evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName, taskName));
+                } catch (InvalidKeySpecException | IOException e) {
+                    evaluationStages.add(new OfferEvaluationStage() {
+                        @Override
+                        public EvaluationOutcome evaluate(
+                                MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
+                            return EvaluationOutcome.fail(
+                                    this, null, "Failed to TLSEvaluationStage: %s", e);
+                        }
+                    });
+                    logger.error("Failed to create TLSEvaluationStage", e);
+                }
             }
 
             boolean shouldBeLaunched = podInstanceRequirement.getTasksToLaunch().contains(taskName);

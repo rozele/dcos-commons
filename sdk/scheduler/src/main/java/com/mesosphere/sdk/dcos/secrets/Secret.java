@@ -12,7 +12,7 @@ public class Secret {
     private String description;
     private Collection<String> labels;
 
-    public Secret(String value, String author, String created, String description, Collection<String> labels) {
+    private Secret(String value, String author, String created, String description, Collection<String> labels) {
         this.value = value;
         this.author = author;
         this.created = created;
@@ -20,7 +20,7 @@ public class Secret {
         this.labels = labels;
     }
 
-    public Secret(Builder builder) {
+    private Secret(Builder builder) {
        this(
                builder.value,
                builder.author,
@@ -50,6 +50,9 @@ public class Secret {
         return labels;
     }
 
+    /**
+     * A {@link Secret} class builder.
+     */
     public static class Builder {
         private String value;
         private String author;

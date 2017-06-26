@@ -13,9 +13,14 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.net.URL;
 
+/**
+ * Default secrets client.
+ */
 public class DefaultSecretsClient implements SecretsClient {
 
-    // Each secrets requests is prefixed with secrets store name
+    /**
+     * URL path prefix for secret store.
+     */
     public static final String STORE_PREFIX = "secret/%s/";
 
     private URL baseUrl;
@@ -91,20 +96,19 @@ public class DefaultSecretsClient implements SecretsClient {
             return;
         }
 
-        if (statusLine.getStatusCode() == 403) {
-            throw new ForbiddenException(store, path);
-        }
+        switch (statusLine.getStatusCode()) {
+            case 403:
+                throw new ForbiddenException(store, path);
 
-        if (statusLine.getStatusCode() == 404) {
-            throw new NotFoundException();
-        }
+            case 404:
+                throw new NotFoundException();
 
-        if (statusLine.getStatusCode() == 409) {
-            throw new AlreadyExistsException();
-        }
+            case 409:
+                throw new AlreadyExistsException();
 
-        // Unhandled HTTP code
-        throw new SecretsException();
+            default:
+                throw new SecretsException();
+        }
     }
 
 }

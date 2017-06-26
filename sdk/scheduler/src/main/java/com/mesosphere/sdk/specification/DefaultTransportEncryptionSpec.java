@@ -58,6 +58,9 @@ public class DefaultTransportEncryptionSpec implements TransportEncryptionSpec {
         return ReflectionToStringBuilder.toString(this);
     }
 
+    /**
+     * A {@link DefaultTransportEncryptionSpec} builder.
+     */
     public static final class Builder {
         private String name;
         private Type type;

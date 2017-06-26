@@ -32,7 +32,10 @@ public class CachedTokenProvider implements TokenProvider {
 
         if (token.isPresent()) {
 
-            Instant triggerRefresh = token.get().getExpiration().toInstant().minusSeconds(this.triggerRefreshBeforeSeconds);
+            Instant triggerRefresh = token.get()
+                    .getExpiration()
+                    .toInstant()
+                    .minusSeconds(this.triggerRefreshBeforeSeconds);
 
             if (triggerRefresh.isAfter(Instant.now())) {
                 return token.get();

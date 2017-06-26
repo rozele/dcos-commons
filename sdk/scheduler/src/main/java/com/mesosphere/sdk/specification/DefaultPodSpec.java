@@ -119,7 +119,8 @@ public class DefaultPodSpec implements PodSpec {
         builder.uris = copy.getUris();
         builder.user = copy.getUser().isPresent() ? copy.getUser().get() : null;
         builder.volumes = copy.getVolumes();
-        builder.transportEncryption = copy.getTransportEncryption().isPresent() ? copy.getTransportEncryption().get() : null;
+        builder.transportEncryption = copy.getTransportEncryption().isPresent() ?
+                copy.getTransportEncryption().get() : null;
         return builder;
     }
 

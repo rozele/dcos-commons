@@ -1,5 +1,8 @@
 package com.mesosphere.sdk.dcos.http;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.MalformedURLException;
 import java.net.URL;
 
@@ -8,12 +11,14 @@ import java.net.URL;
  */
 public class URLHelper {
 
+    private static final Logger logger = LoggerFactory.getLogger(URLHelper.class);
+
     public static URL fromUnchecked(String url) {
 
         try {
             return new URL(url);
         } catch (MalformedURLException e) {
-            e.printStackTrace();
+            logger.error("Failed to create URL from string", e);
         }
 
         return null;
@@ -25,7 +30,7 @@ public class URLHelper {
         try {
             return addPath(base, path);
         } catch (MalformedURLException e) {
-            e.printStackTrace();
+            logger.error("Failed to add path to the URL", e);
         }
 
         return null;

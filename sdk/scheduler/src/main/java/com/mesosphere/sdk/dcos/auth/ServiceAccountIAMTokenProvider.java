@@ -8,6 +8,8 @@ import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
 import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URL;
@@ -23,9 +25,6 @@ import java.util.Date;
 
 /**
  * Provides a token retrieved by `login` operation against IAM service with given service account.
- *
- * For reference implementation
- * @see "https://github.com/mesosphere/bouncer/blob/fc4e0f4205112f3a9bc2b10bb4639d9985beb19e/lynch/lynch/auth.py#L63"
  */
 public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
@@ -34,7 +33,9 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
     private RSAPrivateKey privateKey;
     private Executor httpExecutor;
 
-    public ServiceAccountIAMTokenProvider(
+    private final Logger logger = LoggerFactory.getLogger(getClass());
+
+    private ServiceAccountIAMTokenProvider(
             URL iamUrl,
             String uid,
             RSAPrivateKey privateKey,
@@ -45,7 +46,7 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
         this.httpExecutor = executor;
     }
 
-    public ServiceAccountIAMTokenProvider(Builder builder) {
+    private ServiceAccountIAMTokenProvider(Builder builder) {
         this(
                 builder.iamUrl,
                 builder.uid,
@@ -56,17 +57,10 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
     @Override
     public Token getToken() throws IOException {
-        String serviceLoginToken = null;
-        try {
-            serviceLoginToken = JWT.create()
+        String serviceLoginToken = JWT.create()
                     .withClaim("uid", uid)
                     .withExpiresAt(Date.from(Instant.now().plusSeconds(120)))
                     .sign(getRSA256Algorithm());
-        } catch (InvalidKeySpecException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
 
         JSONObject data = new JSONObject();
         data.put("uid", uid);
@@ -77,23 +71,38 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
         Response response = httpExecutor.execute(request);
 
-        JSONObject resposneData = new JSONObject(response.returnContent().asString());
-        return new Token(resposneData.getString("token"));
+        JSONObject responseData = new JSONObject(response.returnContent().asString());
+        return new Token(responseData.getString("token"));
     }
 
     /**
      * Creates RS256 JWT Algorithm for signing tokens.
      * @return
-     * @throws InvalidKeySpecException
-     * @throws NoSuchAlgorithmException
      */
-    private Algorithm getRSA256Algorithm() throws InvalidKeySpecException, NoSuchAlgorithmException {
+    private Algorithm getRSA256Algorithm() {
         RSAPublicKeySpec publicKeySpec = new RSAPublicKeySpec(privateKey.getModulus(), privateKey.getPrivateExponent());
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+
+        KeyFactory keyFactory = null;
+        try {
+            keyFactory = KeyFactory.getInstance("RSA");
+        } catch (NoSuchAlgorithmException e) {
+            logger.error("Failed to create KeyFactory", e);
+            e.printStackTrace();
+        }
+
+        PublicKey publicKey = null;
+        try {
+            publicKey = keyFactory.generatePublic(publicKeySpec);
+        } catch (InvalidKeySpecException e) {
+            logger.error("Failed to generate public key from private key spec", e);
+        }
+
         return Algorithm.RSA256((RSAPublicKey) publicKey, privateKey);
     }
 
+    /**
+     * A {@link ServiceAccountIAMTokenProvider} class builder.
+     */
     public static class Builder {
         private URL iamUrl;
         private String uid;
@@ -132,7 +141,6 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
         }
 
         public Executor buildExecutor() {
-
             HttpClientBuilder httpClientBuilder = new HttpClientBuilder();
 
             if (disableTLSVerification) {
@@ -144,7 +152,6 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
             }
 
             return Executor.newInstance(httpClientBuilder.build());
-
         }
 
         public ServiceAccountIAMTokenProvider build() {

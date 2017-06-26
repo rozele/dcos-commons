@@ -20,7 +20,7 @@ public interface SecretsClient {
      * @param secret a secret definition
      * @throws IOException
      */
-    public void create(String path, Secret secret) throws IOException, SecretsException;
+    void create(String path, Secret secret) throws IOException, SecretsException;
 
     /**
      * Update a secret.
@@ -28,13 +28,13 @@ public interface SecretsClient {
      * @param secret an updated secret definition.
      * @throws IOException
      */
-    public void update(String path, Secret secret) throws IOException, SecretsException;
+    void update(String path, Secret secret) throws IOException, SecretsException;
 
     /**
      * Delete an existing secret.
      * @param path path which contains the secret.
      * @throws IOException
      */
-    public void delete(String path) throws IOException, SecretsException;
+    void delete(String path) throws IOException, SecretsException;
 
 }

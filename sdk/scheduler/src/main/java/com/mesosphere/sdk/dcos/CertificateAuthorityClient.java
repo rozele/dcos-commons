@@ -10,6 +10,14 @@ import java.security.cert.X509Certificate;
  */
 public interface CertificateAuthorityClient {
 
-    public X509Certificate sign(byte[] csr) throws IOException, CertificateException;
+    /**
+     * Create a new certificate from CSR by contacting certificate authority.
+     *
+     * @param csr
+     * @return
+     * @throws IOException
+     * @throws CertificateException
+     */
+    X509Certificate sign(byte[] csr) throws IOException, CertificateException;
 
 }

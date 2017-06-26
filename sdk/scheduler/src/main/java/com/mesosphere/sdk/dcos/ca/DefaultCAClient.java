@@ -16,6 +16,9 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
+/**
+ * A default implementation of {@link CertificateAuthorityClient}.
+ */
 public class DefaultCAClient implements CertificateAuthorityClient {
 
     private URL baseURL;
@@ -43,7 +46,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         data.put("certificate_request", new String(csr));
         data.put("profile", "");
 
-        Request request = Request.Post(urlForPath("sign").toString())
+        Request request = Request.Post(URLHelper.addPathUnchecked(baseURL, "sign").toString())
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
         Response response = httpExecutor.execute(request);
 
@@ -53,10 +56,6 @@ public class DefaultCAClient implements CertificateAuthorityClient {
 
         return (X509Certificate) certificateFactory
                 .generateCertificate(new ByteArrayInputStream(certificate.getBytes()));
-    }
-
-    protected URL urlForPath(String path) {
-        return URLHelper.addPathUnchecked(this.baseURL, path);
     }
 
 }

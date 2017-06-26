@@ -163,8 +163,12 @@ public class SchedulerFlags {
         return getServiceAccountObject().getString("private_key");
     }
 
-    // TODO(mh): Add documentation about this JSON varaible being injected to scheduler runtime
-    // https://github.com/mesosphere/mesos-modules-private/blob/12e64db0e5e59f6695808b4400a10d5f6d86f36b/common/bouncer.cpp#L340
+    /**
+     * Gets a service account JSON object.
+     *
+     * TODO(mh): Add documentation about this JSON varaible being injected to scheduler runtime
+     * {@see https://github.com/mesosphere/mesos-modules-private/blob/master/common/bouncer.cpp#L340}
+     */
     private JSONObject getServiceAccountObject() {
         return new JSONObject(flagStore.getRequired(SIDECHANNEL_AUTH_ENV_NAME));
     }
