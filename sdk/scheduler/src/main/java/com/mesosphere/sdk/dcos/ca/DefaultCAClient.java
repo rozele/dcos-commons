@@ -12,6 +12,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -43,7 +44,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
     @Override
     public X509Certificate sign(byte[] csr) throws IOException, CertificateException {
         JSONObject data = new JSONObject();
-        data.put("certificate_request", new String(csr));
+        data.put("certificate_request", new String(csr, Charset.forName("UTF-8")));
         data.put("profile", "");
 
         Request request = Request.Post(URLHelper.addPathUnchecked(baseURL, "sign").toString())
@@ -55,7 +56,8 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         String certificate = data.getJSONObject("result").getString("certificate");
 
         return (X509Certificate) certificateFactory
-                .generateCertificate(new ByteArrayInputStream(certificate.getBytes()));
+                .generateCertificate(
+                        new ByteArrayInputStream(certificate.getBytes(Charset.forName("UTF-8"))));
     }
 
 }

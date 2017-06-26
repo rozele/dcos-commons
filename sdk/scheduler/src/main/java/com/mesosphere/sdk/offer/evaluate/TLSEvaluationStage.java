@@ -7,7 +7,7 @@ import com.mesosphere.sdk.dcos.auth.CachedTokenProvider;
 import com.mesosphere.sdk.dcos.auth.ServiceAccountIAMTokenProvider;
 import com.mesosphere.sdk.dcos.auth.TokenProvider;
 import com.mesosphere.sdk.dcos.ca.DefaultCAClient;
-import com.mesosphere.sdk.dcos.http.HttpClientBuilder;
+import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import com.mesosphere.sdk.dcos.http.URLHelper;
 import com.mesosphere.sdk.dcos.secrets.DefaultSecretsClient;
 import com.mesosphere.sdk.dcos.secrets.Secret;
@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.security.*;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
@@ -73,16 +74,11 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     public static TLSEvaluationStage fromEnvironmentForService(
             String serviceName,
-            String taskName) throws IOException, InvalidKeySpecException {
+            String taskName) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
 
         SchedulerFlags flags = SchedulerFlags.fromEnv();
 
-        KeyFactory keyFactory = null;
-        try {
-            keyFactory = KeyFactory.getInstance("RSA");
-        } catch (NoSuchAlgorithmException e) {
-            LOGGER.error("Failed to create KeyFactory", e);
-        }
+        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
 
         PemReader pemReader = new PemReader(new StringReader(flags.getServiceAccountPrivateKeyPEM()));
         PrivateKey privateKey = keyFactory.generatePrivate(
@@ -96,7 +92,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         TokenProvider tokenProvider = new CachedTokenProvider(serviceAccountIAMTokenProvider);
 
         Executor executor = Executor.newInstance(
-                new HttpClientBuilder()
+                new DcosHttpClientBuilder()
                         .setTokenProvider(tokenProvider)
                         .setRedirectStrategy(new LaxRedirectStrategy())
                         .build());
@@ -133,7 +129,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         } catch (Exception e) {
             LOGGER.error("Failed to get certificate", e);
             return EvaluationOutcome.fail(
-                    this, null, "Failed because of exception: %s", e);
+                    this, "Failed because of exception: %s", e);
         }
 
         Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(podInfoBuilder);
@@ -286,7 +282,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         PKCS10CertificationRequest csr = csrBuilder.build(signer);
 
         ByteArrayOutputStream os = new ByteArrayOutputStream();
-        PemWriter writer = new PemWriter(new OutputStreamWriter(os));
+        PemWriter writer = new PemWriter(new OutputStreamWriter(os, Charset.forName("UTF-8")));
         writer.writeObject(new JcaMiscPEMGenerator(csr));
         writer.flush();
 

@@ -56,7 +56,7 @@ public class ServiceAccountIAMTokenProviderTest {
     // TODO(mh): Maybe we could run a bouncer in the docker container?
     @Ignore
     @Test
-    public void testGetTokenAgainstRunningBouncer() throws IOException, InvalidKeySpecException {
+    public void testGetTokenAgainstRunningBouncer() throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
 
         KeyPair keyPair = loadRSAKeyPair();
 

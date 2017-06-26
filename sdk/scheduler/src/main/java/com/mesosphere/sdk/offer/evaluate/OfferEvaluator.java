@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.*;
 import java.util.function.Function;
@@ -288,13 +289,13 @@ public class OfferEvaluator {
             if (podInstanceRequirement.getPodInstance().getPod().getTransportEncryption().isPresent()) {
                 try {
                     evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName, taskName));
-                } catch (InvalidKeySpecException | IOException e) {
+                } catch (NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
                     evaluationStages.add(new OfferEvaluationStage() {
                         @Override
                         public EvaluationOutcome evaluate(
                                 MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
                             return EvaluationOutcome.fail(
-                                    this, null, "Failed to TLSEvaluationStage: %s", e);
+                                    this, "Failed to TLSEvaluationStage: %s", e);
                         }
                     });
                     logger.error("Failed to create TLSEvaluationStage", e);

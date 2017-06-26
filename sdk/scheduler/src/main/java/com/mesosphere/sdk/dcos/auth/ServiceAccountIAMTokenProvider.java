@@ -2,7 +2,7 @@ package com.mesosphere.sdk.dcos.auth;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.mesosphere.sdk.dcos.http.HttpClientBuilder;
+import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
@@ -30,27 +30,27 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
     private URL iamUrl;
     private String uid;
-    private RSAPrivateKey privateKey;
     private Executor httpExecutor;
+    private Algorithm signatureAlgorithm;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private ServiceAccountIAMTokenProvider(
             URL iamUrl,
             String uid,
-            RSAPrivateKey privateKey,
+            Algorithm signatureAlgorithm,
             Executor executor) {
         this.iamUrl = iamUrl;
         this.uid = uid;
-        this.privateKey = privateKey;
         this.httpExecutor = executor;
+        this.signatureAlgorithm = signatureAlgorithm;
     }
 
-    private ServiceAccountIAMTokenProvider(Builder builder) {
+    private ServiceAccountIAMTokenProvider(Builder builder) throws InvalidKeySpecException, NoSuchAlgorithmException {
         this(
                 builder.iamUrl,
                 builder.uid,
-                builder.privateKey,
+                builder.buildAlgorithm(),
                 builder.buildExecutor()
         );
     }
@@ -60,7 +60,7 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
         String serviceLoginToken = JWT.create()
                     .withClaim("uid", uid)
                     .withExpiresAt(Date.from(Instant.now().plusSeconds(120)))
-                    .sign(getRSA256Algorithm());
+                    .sign(signatureAlgorithm);
 
         JSONObject data = new JSONObject();
         data.put("uid", uid);
@@ -76,39 +76,17 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
     }
 
     /**
-     * Creates RS256 JWT Algorithm for signing tokens.
-     * @return
-     */
-    private Algorithm getRSA256Algorithm() {
-        RSAPublicKeySpec publicKeySpec = new RSAPublicKeySpec(privateKey.getModulus(), privateKey.getPrivateExponent());
-
-        KeyFactory keyFactory = null;
-        try {
-            keyFactory = KeyFactory.getInstance("RSA");
-        } catch (NoSuchAlgorithmException e) {
-            logger.error("Failed to create KeyFactory", e);
-            e.printStackTrace();
-        }
-
-        PublicKey publicKey = null;
-        try {
-            publicKey = keyFactory.generatePublic(publicKeySpec);
-        } catch (InvalidKeySpecException e) {
-            logger.error("Failed to generate public key from private key spec", e);
-        }
-
-        return Algorithm.RSA256((RSAPublicKey) publicKey, privateKey);
-    }
-
-    /**
      * A {@link ServiceAccountIAMTokenProvider} class builder.
      */
     public static class Builder {
         private URL iamUrl;
         private String uid;
         private RSAPrivateKey privateKey;
+        private Algorithm signatureAlgorithm;
         private boolean disableTLSVerification;
         private int connectionTimeout;
+
+        private final Logger logger = LoggerFactory.getLogger(getClass());
 
         public Builder() {
             this.disableTLSVerification = false;
@@ -140,8 +118,13 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
             return this;
         }
 
-        public Executor buildExecutor() {
-            HttpClientBuilder httpClientBuilder = new HttpClientBuilder();
+        public Builder setSignatureAlgorithm(Algorithm signatureAlgorithm) {
+            this.signatureAlgorithm = signatureAlgorithm;
+            return this;
+        }
+
+        public Executor buildExecutor() throws NoSuchAlgorithmException {
+            DcosHttpClientBuilder httpClientBuilder = new DcosHttpClientBuilder();
 
             if (disableTLSVerification) {
                 httpClientBuilder.disableTLSVerification();
@@ -154,7 +137,21 @@ public class ServiceAccountIAMTokenProvider implements TokenProvider {
             return Executor.newInstance(httpClientBuilder.build());
         }
 
-        public ServiceAccountIAMTokenProvider build() {
+        public Algorithm buildAlgorithm() throws NoSuchAlgorithmException, InvalidKeySpecException {
+            // If signature algorithm was provided use injected algorithm.
+            if (signatureAlgorithm != null) {
+                return signatureAlgorithm;
+            }
+
+            RSAPublicKeySpec publicKeySpec = new RSAPublicKeySpec(
+                    privateKey.getModulus(), privateKey.getPrivateExponent());
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+
+            return Algorithm.RSA256((RSAPublicKey) publicKey, privateKey);
+        }
+
+        public ServiceAccountIAMTokenProvider build() throws InvalidKeySpecException, NoSuchAlgorithmException {
             return new ServiceAccountIAMTokenProvider(this);
         }
     }

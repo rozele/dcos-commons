@@ -1,7 +1,7 @@
 package com.mesosphere.sdk.dcos.ca;
 
 import com.mesosphere.sdk.dcos.auth.StaticTokenProvider;
-import com.mesosphere.sdk.dcos.http.HttpClientBuilder;
+import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.fluent.Executor;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
@@ -45,9 +45,9 @@ public class DefaultCAClientTest {
         CA_BASE_URL = new URL("https://172.17.0.2/ca/api/v2/");
     }
 
-    public Executor createAuthenticatedExecutor() {
+    public Executor createAuthenticatedExecutor() throws NoSuchAlgorithmException {
 
-        HttpClient httpClient = new HttpClientBuilder()
+        HttpClient httpClient = new DcosHttpClientBuilder()
                 .disableTLSVerification()
                 .setTokenProvider(new StaticTokenProvider(TOKEN))
                 .build();
