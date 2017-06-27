@@ -1,16 +1,40 @@
 package com.mesosphere.sdk.dcos.auth;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
+import com.auth0.jwt.algorithms.Algorithm;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.security.*;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.RSAPublicKeySpec;
+import java.time.Instant;
+import java.util.Date;
 
 public class StaticTokenProviderTest {
 
+    private String createToken() throws NoSuchAlgorithmException {
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+        Algorithm algorithm = Algorithm.RSA256((
+                RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        return JWT.create()
+                .withExpiresAt(Date.from(Instant.now().plusSeconds(120)))
+                .withClaim("uid", "test")
+                .sign(algorithm);
+    }
+
     @Test
-    public void testToken() throws IOException {
-        TokenProvider tokenProvider = new StaticTokenProvider("test-token");
-        Assert.assertEquals(tokenProvider.getToken().getValue(), "test-token");
+    public void testToken() throws IOException, NoSuchAlgorithmException {
+        String testToken = createToken();
+        TokenProvider tokenProvider = new StaticTokenProvider(testToken);
+        Assert.assertEquals(tokenProvider.getToken().getValue(), testToken);
     }
 
 }
