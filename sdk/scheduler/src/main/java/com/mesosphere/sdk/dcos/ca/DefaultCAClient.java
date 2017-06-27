@@ -8,6 +8,8 @@ import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
 import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -16,11 +18,15 @@ import java.nio.charset.Charset;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /**
  * A default implementation of {@link CertificateAuthorityClient}.
  */
 public class DefaultCAClient implements CertificateAuthorityClient {
+
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private URL baseURL;
     private Executor httpExecutor;
@@ -33,7 +39,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         try {
             this.certificateFactory = CertificateFactory.getInstance("X.509");
         } catch (CertificateException e) {
-            e.printStackTrace();
+            logger.error("Failed to create certificate factory", e);
         }
     }
 
@@ -58,6 +64,36 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         return (X509Certificate) certificateFactory
                 .generateCertificate(
                         new ByteArrayInputStream(certificate.getBytes(Charset.forName("UTF-8"))));
+    }
+
+    @Override
+    public Collection<X509Certificate> chainWithRootCert(
+            X509Certificate certificate) throws IOException, CertificateException {
+        JSONObject data = new JSONObject();
+        data.put("certificate", PEMHelper.toPEM(certificate));
+
+        Request request = Request.Post(URLHelper.addPathUnchecked(baseURL, "bundle").toString())
+                .bodyString(data.toString(), ContentType.APPLICATION_JSON);
+        Response response = httpExecutor.execute(request);
+
+        String responseContent = response.returnContent().asString();
+        data = new JSONObject(responseContent);
+        String bundle = data.getJSONObject("result").getString("bundle");
+
+        ArrayList<X509Certificate> certificates = new ArrayList<>(
+                (Collection<? extends X509Certificate>) certificateFactory.generateCertificates(
+                    new ByteArrayInputStream(bundle.getBytes("UTF-8")))
+        );
+
+        String rootCAcert = data.getJSONObject("result").getString("root");
+        certificates.add((X509Certificate) certificateFactory.generateCertificate(
+                new ByteArrayInputStream(rootCAcert.getBytes(Charset.forName("UTF-8"))))
+        );
+
+        // Remove certificate from request
+        certificates.remove(0);
+
+        return certificates;
     }
 
 }

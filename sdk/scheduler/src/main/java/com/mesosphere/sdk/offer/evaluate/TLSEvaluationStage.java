@@ -7,6 +7,7 @@ import com.mesosphere.sdk.dcos.auth.CachedTokenProvider;
 import com.mesosphere.sdk.dcos.auth.ServiceAccountIAMTokenProvider;
 import com.mesosphere.sdk.dcos.auth.TokenProvider;
 import com.mesosphere.sdk.dcos.ca.DefaultCAClient;
+import com.mesosphere.sdk.dcos.ca.PEMHelper;
 import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import com.mesosphere.sdk.dcos.http.URLHelper;
 import com.mesosphere.sdk.dcos.secrets.DefaultSecretsClient;
@@ -112,8 +113,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
             X509Certificate certificate = certificateAuthorityClient.sign(generateCSR(keyPair));
 
-            String certPEM = certificateToPem(certificate);
-            String privateKeyPEM = privateKeyToPem(keyPair.getPrivate());
+            String certPEM = PEMHelper.toPEM(certificate);
+            String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
 
             storeSecrets(podInfoBuilder, certPEM, privateKeyPEM);
         } catch (Exception e) {
@@ -208,30 +209,6 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     private String getSecretPath(PodInfoBuilder podInfoBuilder, String name) {
         return String.format("%s/%s/%s", serviceName, podInfoBuilder.getPodInstance().getName(), name);
-    }
-
-    private String privateKeyToPem(PrivateKey privateKey) throws IOException {
-
-        StringWriter stringWriter = new StringWriter();
-
-        PemWriter pemWriter = new PemWriter(stringWriter);
-        pemWriter.writeObject(new JcaMiscPEMGenerator(privateKey));
-        pemWriter.flush();
-
-        return stringWriter.toString();
-
-    }
-
-    private String certificateToPem(X509Certificate certificate) throws IOException {
-
-        StringWriter stringWriter = new StringWriter();
-
-        PemWriter pemWriter = new PemWriter(stringWriter);
-        pemWriter.writeObject(new JcaMiscPEMGenerator(certificate));
-        pemWriter.flush();
-
-        return stringWriter.toString();
-
     }
 
     private byte[] generateCSR(

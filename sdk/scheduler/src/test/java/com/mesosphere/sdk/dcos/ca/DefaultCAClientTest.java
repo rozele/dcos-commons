@@ -10,6 +10,7 @@ import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
 import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
@@ -21,6 +22,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -28,10 +30,11 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
+import java.util.Collection;
 
 public class DefaultCAClientTest {
 
-    private String TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJhZG1pbiIsImV4cCI6MTQ5ODU1NjQ2Mn0.n7w8gDYUwEjSR6g-uk-Xk0SFuMjSEC4otVAdjn5i1rA4L7WFjy3G9n3e6dojSNXpm6kgLrRyUCWE1BcUfl0f-Zev49NGARbHgOMZjJSFoNly0W1Bo2QoeccuyqcKpqSZl4JNWeTyJRmc_r2lFzUcM67WwQMLNHA9eFdy6PkwPSSz1jpFpE3fu49sFkLdYA8v5PIxqQ3WExznpS5837qK8KQlfypo4xslwOvtF_nOhbduG4bLNu500IWIvT8_Ul3FdXVfR_t5FSnbe0M61rTy4IKik-lGTwMJQKjaMF248RxR-lhH6OrF6kmV0d8he9z9fFuZAPEC2wAJMS-3_FU7Bg";
+    private String TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJhZG1pbiIsImV4cCI6MTQ5OTAxNTQ2NH0.PSEvegn859wXxswcmjMybGBbA20s2KSpag_CYRaDqeT4ICwiVwN2TkpxJUhnytuXFOchgucHGAW0UREJXnq88l0FgtcRIOxgyXFN5C4QOI5bt7wGtwudVTteDhaibN3NDqiMCvLmtgZDsqrDhepLpY4tFncNBSBj9NJWznLTzkjKgf0FCKw5c2bXUgB4D6EGMFaJg-JO4u5Aa7kf2nV7W0WBFnQOkClaBrr_--MbFYdz3Cls4H7YeHFiS3SnmH7NhEDbvhCIrNNhAGH_vvsrZEjyc0Zj18pl6bsH3_T1tafY_WwQHiIcTb4hmHQasl0ui0aRswierwSrhCZnzyaU-g";
 
     private KeyPairGenerator KEY_PAIR_GENERATOR;
     private int RSA_KEY_SIZE = 2048;
@@ -47,22 +50,15 @@ public class DefaultCAClientTest {
         CA_BASE_URL = new URL("https://172.17.0.2/ca/api/v2/");
     }
 
-    public Executor createAuthenticatedExecutor() throws NoSuchAlgorithmException {
-
+    private Executor createAuthenticatedExecutor() throws NoSuchAlgorithmException {
         HttpClient httpClient = new DcosHttpClientBuilder()
                 .disableTLSVerification()
                 .setTokenProvider(new StaticTokenProvider(TOKEN))
                 .build();
         return Executor.newInstance(httpClient);
-
     }
 
-    // TODO(mh): Run with a CA container?
-    @Ignore
-    @Test
-    public void testSign() throws Exception {
-        DefaultCAClient client = new DefaultCAClient(CA_BASE_URL, createAuthenticatedExecutor());
-
+    private byte[] createCSR() throws IOException, OperatorCreationException {
         KeyPair keyPair = KEY_PAIR_GENERATOR.generateKeyPair();
 
         X500NameBuilder nameBuilder = new X500NameBuilder();
@@ -104,8 +100,24 @@ public class DefaultCAClientTest {
         writer.writeObject(new JcaMiscPEMGenerator(csr));
         writer.flush();
 
-        X509Certificate certificate = client.sign(os.toByteArray());
-        Assert.assertNotNull(certificate);
+        return os.toByteArray();
+    }
 
+    // TODO(mh): Run with a CA container?
+    @Ignore
+    @Test
+    public void testSign() throws Exception {
+        DefaultCAClient client = new DefaultCAClient(CA_BASE_URL, createAuthenticatedExecutor());
+        X509Certificate certificate = client.sign(createCSR());
+        Assert.assertNotNull(certificate);
+    }
+
+    @Ignore
+    @Test
+    public void testBundle() throws Exception {
+        DefaultCAClient client = new DefaultCAClient(CA_BASE_URL, createAuthenticatedExecutor());
+        X509Certificate certificate = client.sign(createCSR());
+        Collection<X509Certificate> certificates = client.chainWithRootCert(certificate);
+        Assert.assertTrue(certificates.size() > 0);
     }
 }

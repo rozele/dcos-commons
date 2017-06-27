@@ -1,16 +1,16 @@
 package com.mesosphere.sdk.dcos.auth;
 
 import com.auth0.jwt.JWT;
-import com.auth0.jwt.JWTCreator;
 import com.auth0.jwt.algorithms.Algorithm;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.security.*;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
-import java.security.spec.RSAPublicKeySpec;
 import java.time.Instant;
 import java.util.Date;
 
