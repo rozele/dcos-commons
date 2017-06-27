@@ -95,13 +95,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
         CertificateAuthorityClient certificateAuthorityClient = new DefaultCAClient(executor);
         SecretsClient secretsClient = new DefaultSecretsClient(executor);
-
-        KeyPairGenerator keyPairGenerator = null;
-        try {
-            keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        } catch (NoSuchAlgorithmException e) {
-            LOGGER.error("Failed to create KeyPairGenerator", e);
-        }
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
 
         return new TLSEvaluationStage(
                 serviceName, taskName, certificateAuthorityClient, secretsClient, keyPairGenerator);
