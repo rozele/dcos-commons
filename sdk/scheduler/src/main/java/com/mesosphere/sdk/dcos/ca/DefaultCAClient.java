@@ -15,10 +15,12 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 
 /**
@@ -78,20 +80,37 @@ public class DefaultCAClient implements CertificateAuthorityClient {
 
         String responseContent = response.returnContent().asString();
         data = new JSONObject(responseContent);
+
+        if (!data.getBoolean("success")) {
+            StringBuilder stringBuilder = new StringBuilder();
+            for (Object errorMessage : data.getJSONArray("errors")) {
+                stringBuilder.append(errorMessage + "\n");
+            }
+            throw new CertificateException(stringBuilder.toString());
+        }
+
         String bundle = data.getJSONObject("result").getString("bundle");
+        ArrayList<X509Certificate> certificates = new ArrayList<>();
 
-        ArrayList<X509Certificate> certificates = new ArrayList<>(
-                (Collection<? extends X509Certificate>) certificateFactory.generateCertificates(
-                    new ByteArrayInputStream(bundle.getBytes("UTF-8")))
-        );
+        if (bundle.length() > 0) {
+            certificates.addAll(
+                    (Collection<? extends X509Certificate>) certificateFactory.generateCertificates(
+                            new ByteArrayInputStream(bundle.getBytes("UTF-8")))
+            );
+            // Bundle response includes also submitted certificate which we don't need
+            // so remove it.
+            certificates.remove(0);
+        }
 
+        // Response should come with Root CA certificate which isn't included in 'bundle'
         String rootCAcert = data.getJSONObject("result").getString("root");
+        if (rootCAcert.length() == 0) {
+            throw new CertificateException("Failed to retrieve Root CA certificate");
+        }
+
         certificates.add((X509Certificate) certificateFactory.generateCertificate(
                 new ByteArrayInputStream(rootCAcert.getBytes(Charset.forName("UTF-8"))))
         );
-
-        // Remove certificate from request
-        certificates.remove(0);
 
         return certificates;
     }

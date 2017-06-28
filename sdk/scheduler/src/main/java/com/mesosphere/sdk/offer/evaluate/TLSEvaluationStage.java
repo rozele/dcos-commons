@@ -10,12 +10,15 @@ import com.mesosphere.sdk.dcos.ca.DefaultCAClient;
 import com.mesosphere.sdk.dcos.ca.PEMHelper;
 import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import com.mesosphere.sdk.dcos.http.URLHelper;
+import com.mesosphere.sdk.dcos.secrets.AlreadyExistsException;
 import com.mesosphere.sdk.dcos.secrets.DefaultSecretsClient;
 import com.mesosphere.sdk.dcos.secrets.Secret;
 import com.mesosphere.sdk.dcos.secrets.SecretsException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.offer.evaluate.security.CertificateNamesGenerator;
+import com.mesosphere.sdk.offer.evaluate.security.SecretNameGenerator;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
+import com.mesosphere.sdk.specification.TransportEncryptionSpec;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.apache.mesos.Protos;
@@ -36,11 +39,14 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.security.*;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * A {@link TLSEvaluationStage} is responsible for provisioning X.509 certificates, converting them to
@@ -106,24 +112,69 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
     @Override
     public EvaluationOutcome evaluate(MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
 
+        String filenameInContainer = podInfoBuilder
+                .getPodInstance()
+                .getPod()
+                .getTransportEncryption()
+                .get()
+                .getName();
+
+        SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
+                serviceName,
+                taskName,
+                filenameInContainer);
+
         // Generate new private key and encode it to PEM
         // Generate new CSR, sign it, encode certificate to PEM
         try {
             KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
             X509Certificate certificate = certificateAuthorityClient.sign(generateCSR(keyPair));
+            ArrayList<X509Certificate> certificateChain = (ArrayList<X509Certificate>)
+                    certificateAuthorityClient.chainWithRootCert(certificate);
 
-            String certPEM = PEMHelper.toPEM(certificate);
+            ArrayList<X509Certificate> endEntityCertificateWithChain = new ArrayList<>();
+            // Add end-entity certificate
+            endEntityCertificateWithChain.add(certificate);
+            // Add all possible certificates in the chain
+            if (certificateChain.size() > 1) {
+                endEntityCertificateWithChain.addAll(certificateChain.subList(0, certificateChain.size() - 1));
+            }
+            // Convert to pem and join to a single string
+            String certPEM = endEntityCertificateWithChain.stream()
+                    .map(cert -> {
+                        try {
+                            return PEMHelper.toPEM(cert);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    })
+                    .collect(Collectors.joining("\n"));
+
             String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
+            String rootCACertPEM = PEMHelper.toPEM(
+                    certificateChain.get(certificateChain.size() - 1));
 
-            storeSecrets(podInfoBuilder, certPEM, privateKeyPEM);
+            KeyStore keyStore = createEmptyKeyStore();
+            keyStore.setCertificateEntry(filenameInContainer, certificate);
+
+            certificateChain.add(0, certificate);
+            Certificate[] keyStoreChain = new Certificate[]{};
+            certificateChain.toArray(keyStoreChain);
+
+            keyStore.setKeyEntry(filenameInContainer, keyPair.getPrivate().getEncoded(), keyStoreChain);
+
+            KeyStore trustStore = createEmptyKeyStore();
+            trustStore.setCertificateEntry("dcos-root", certificateChain.get(certificateChain.size() - 1));
+
+            storeSecrets(secretNameGenerator, certPEM, privateKeyPEM, rootCACertPEM, keyStore, trustStore);
         } catch (Exception e) {
             LOGGER.error("Failed to get certificate", e);
             return EvaluationOutcome.fail(
                     this, "Failed because of exception: %s", e);
         }
 
-        Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(podInfoBuilder);
+        Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(podInfoBuilder, secretNameGenerator);
 
         // Share keys to the container
         Optional<Protos.ExecutorInfo.Builder> executorBuilder = podInfoBuilder.getExecutorBuilder();
@@ -141,37 +192,38 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     }
 
-    private Collection<Protos.Volume> getExecutorInfoSecretVolumes(PodInfoBuilder podInfoBuilder) {
-        String filenameInContainer = podInfoBuilder
+    private Collection<Protos.Volume> getExecutorInfoSecretVolumes(
+            PodInfoBuilder podInfoBuilder, SecretNameGenerator secretNameGenerator) {
+        HashMap<String, String> tlsSecrets = new HashMap<>();
+
+        TransportEncryptionSpec.Type transportEncryptionType = podInfoBuilder
                 .getPodInstance()
                 .getPod()
                 .getTransportEncryption()
                 .get()
-                .getName();
+                .getType();
 
-        HashMap<String, String> tlsSecrets = new HashMap<>();
-        tlsSecrets.put(
-                getSecretPath(podInfoBuilder, "certificate-crt"),
-                String.format("%s.crt", filenameInContainer));
-
-        tlsSecrets.put(
-                getSecretPath(podInfoBuilder, "private-key"),
-                String.format("%s.key", filenameInContainer));
+        if (transportEncryptionType.equals(TransportEncryptionSpec.Type.TLS)) {
+            tlsSecrets.put(secretNameGenerator.getCertificatePath(), secretNameGenerator.getCertificateMountPath());
+            tlsSecrets.put(secretNameGenerator.getPrivateKeyPath(), secretNameGenerator.getPrivateKeyMountPath());
+            tlsSecrets.put(secretNameGenerator.getRootCACertPath(), secretNameGenerator.getRootCACertMountPath());
+        } else if (transportEncryptionType.equals(TransportEncryptionSpec.Type.KEYSTORE)) {
+            tlsSecrets.put(secretNameGenerator.getKeyStorePath(), secretNameGenerator.getKeyStoreMountPath());
+            tlsSecrets.put(secretNameGenerator.getTrustStorePath(), secretNameGenerator.getTrustStoreMountPath());
+        }
 
         Collection<Protos.Volume> volumes = new ArrayList<>();
 
-        for (Map.Entry<String, String> entry : tlsSecrets.entrySet()) {
-
-            volumes.add(Protos.Volume.newBuilder()
-                    .setSource(Protos.Volume.Source.newBuilder()
-                            .setType(Protos.Volume.Source.Type.SECRET)
-                            .setSecret(getReferenceSecret(entry.getKey()))
-                            .build())
-                    .setContainerPath(entry.getValue())
-                    .setMode(Protos.Volume.Mode.RO)
-                    .build());
-
-        }
+        tlsSecrets.entrySet().forEach(tlsSecretEntry ->
+                volumes.add(Protos.Volume.newBuilder()
+                        .setSource(Protos.Volume.Source.newBuilder()
+                                .setType(Protos.Volume.Source.Type.SECRET)
+                                .setSecret(getReferenceSecret(tlsSecretEntry.getKey()))
+                                .build())
+                        .setContainerPath(tlsSecretEntry.getValue())
+                        .setMode(Protos.Volume.Mode.RO)
+                        .build())
+        );
 
         return volumes;
     }
@@ -184,19 +236,48 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
     }
 
     private void storeSecrets(
-            PodInfoBuilder podInfoBuilder, String certPEM, String privateKeyPEM) throws IOException, SecretsException {
+            SecretNameGenerator secretNameGenerator,
+            String certPEM,
+            String privateKeyPEM,
+            String rootCACertPEM,
+            KeyStore keyStore,
+            KeyStore trustStore) throws IOException, SecretsException, CertificateException, NoSuchAlgorithmException, KeyStoreException {
 
-        LOGGER.info(String.format("Creating new secret: %s", getSecretPath(podInfoBuilder, "certificate-pem")));
+        // TODO(mh): How should we handle partially existing secrets?
+        try {
+            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getCertificatePath()));
+            secretsClient.create(
+                    secretNameGenerator.getCertificatePath(),
+                    buildSecret(certPEM, "PEM encoded certificate"));
 
-        secretsClient.create(
-                getSecretPath(podInfoBuilder, "certificate-crt"),
-                buildSecret(certPEM, "PEM encoded certificate"));
+            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getPrivateKeyPath()));
+            secretsClient.create(
+                    secretNameGenerator.getPrivateKeyPath(),
+                    buildSecret(privateKeyPEM, "PEM encoded private key"));
 
-        LOGGER.info(String.format("Creating new secret: %s", getSecretPath(podInfoBuilder, "private-key")));
+            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getRootCACertPath()));
+            secretsClient.create(
+                    secretNameGenerator.getRootCACertPath(),
+                    buildSecret(rootCACertPEM, "PEM encoded root CA certificate"));
 
-        secretsClient.create(
-                getSecretPath(podInfoBuilder, "private-key"),
-                buildSecret(privateKeyPEM, "PEM encoded private key"));
+            ByteArrayOutputStream keyStoreOs = new ByteArrayOutputStream();
+            keyStore.store(keyStoreOs, new char[0]);
+            String encodedKeyStore = Base64.getEncoder().encodeToString(keyStoreOs.toByteArray());
+            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getKeyStorePath()));
+            secretsClient.create(
+                    secretNameGenerator.getKeyStorePath(),
+                    buildSecret(encodedKeyStore, "Base64 encoded java keystore"));
+
+            ByteArrayOutputStream trustStoreOs = new ByteArrayOutputStream();
+            trustStore.store(trustStoreOs, new char[0]);
+            String encodedTrustStore = Base64.getEncoder().encodeToString(keyStoreOs.toByteArray());
+            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getTrustStorePath()));
+            secretsClient.create(
+                    secretNameGenerator.getTrustStorePath(),
+                    buildSecret(encodedTrustStore, "Base64 encoded java trust store"));
+        } catch (AlreadyExistsException e) {
+            LOGGER.info("Secret already exists", e);
+        }
     }
 
     private Secret buildSecret(String value, String description) {
@@ -207,15 +288,18 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 .build();
     }
 
-    private String getSecretPath(PodInfoBuilder podInfoBuilder, String name) {
-        return String.format("%s/%s/%s", serviceName, podInfoBuilder.getPodInstance().getName(), name);
+    private KeyStore createEmptyKeyStore()
+            throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
+        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        keyStore.load(null, new char[0]);
+        return keyStore;
     }
 
     private byte[] generateCSR(
             KeyPair keyPair) throws IOException, OperatorCreationException {
 
         CertificateNamesGenerator certificateNamesGenerator = new CertificateNamesGenerator(
-                serviceName);
+                serviceName, taskName);
 
         ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
 

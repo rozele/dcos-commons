@@ -6,15 +6,15 @@ import org.bouncycastle.asn1.x509.GeneralNames;
 
 /**
  * A {@link CertificateNamesGenerator} creates relevant names for given service pod.
- *
- * // TODO(mh): What about IP per container feature??
  */
 public class CertificateNamesGenerator {
 
     private String serviceName;
+    private String taskName;
 
-    public CertificateNamesGenerator(String serviceName) {
+    public CertificateNamesGenerator(String serviceName, String taskName) {
         this.serviceName = serviceName;
+        this.taskName = taskName;
     }
 
     /**
@@ -34,13 +34,13 @@ public class CertificateNamesGenerator {
      * @return
      */
     public GeneralNames getSANs() {
-        // TODO(mh): Should we dynamically test whether the network is overlay? If the network isn't
-        // overlay there is no vipName available.
-        String vipName = String.format("*.%s.autoip.dcos.thisdcos.directory", serviceName);
+        String vipWildcardName = String.format("*.%s.autoip.dcos.thisdcos.directory", serviceName);
+        String vipTaskName = String.format("%s.%s.autoip.dcos.thisdcos.directory", taskName, serviceName);
 
         GeneralNames subAtlNames = new GeneralNames(
                 new GeneralName[]{
-                        new GeneralName(GeneralName.dNSName, vipName),
+                        new GeneralName(GeneralName.dNSName, vipTaskName),
+                        new GeneralName(GeneralName.dNSName, vipWildcardName),
                 }
         );
 
