@@ -59,6 +59,8 @@ public class DefaultCAClient implements CertificateAuthorityClient {
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
         Response response = httpExecutor.execute(request);
 
+        // TODO(mh): Add error code handling
+
         String responseContent = response.returnContent().asString();
         data = new JSONObject(responseContent);
         String certificate = data.getJSONObject("result").getString("certificate");
@@ -103,13 +105,13 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         }
 
         // Response should come with Root CA certificate which isn't included in 'bundle'
-        String rootCAcert = data.getJSONObject("result").getString("root");
-        if (rootCAcert.length() == 0) {
+        String rootCACert = data.getJSONObject("result").getString("root");
+        if (rootCACert.length() == 0) {
             throw new CertificateException("Failed to retrieve Root CA certificate");
         }
 
         certificates.add((X509Certificate) certificateFactory.generateCertificate(
-                new ByteArrayInputStream(rootCAcert.getBytes(Charset.forName("UTF-8"))))
+                new ByteArrayInputStream(rootCACert.getBytes(Charset.forName("UTF-8"))))
         );
 
         return certificates;

@@ -2,8 +2,13 @@ package com.mesosphere.sdk.dcos.ca;
 
 import com.mesosphere.sdk.dcos.auth.StaticTokenProvider;
 import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.fluent.Executor;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.protocol.HttpContext;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
@@ -20,17 +25,26 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.math.BigInteger;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
+
+import static org.mockito.Mockito.when;
 
 public class DefaultCAClientTest {
 
@@ -43,11 +57,17 @@ public class DefaultCAClientTest {
 
     private URL CA_BASE_URL;
 
+    @Mock private HttpClient httpClient;
+    @Mock private HttpResponse httpResponse;
+    @Mock private HttpEntity httpEntity;
+    @Mock private StatusLine statusLine;
+
     @Before
     public void init() throws NoSuchAlgorithmException, MalformedURLException {
         KEY_PAIR_GENERATOR = KeyPairGenerator.getInstance("RSA");
         KEY_PAIR_GENERATOR.initialize(RSA_KEY_SIZE);
         CA_BASE_URL = new URL("https://172.17.0.2/ca/api/v2/");
+        MockitoAnnotations.initMocks(this);
     }
 
     private Executor createAuthenticatedExecutor() throws NoSuchAlgorithmException {
@@ -56,6 +76,33 @@ public class DefaultCAClientTest {
                 .setTokenProvider(new StaticTokenProvider(TOKEN))
                 .build();
         return Executor.newInstance(httpClient);
+    }
+
+    private DefaultCAClient createClientWithStatusLine(StatusLine statusLine) throws IOException {
+        DefaultCAClient client = new DefaultCAClient(Executor.newInstance(httpClient));
+
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(httpResponse.getEntity()).thenReturn(httpEntity);
+        String data = "{}";
+        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(data.getBytes()));
+        when(httpClient.execute(
+                Mockito.any(HttpUriRequest.class),
+                Mockito.any(HttpContext.class))).thenReturn(httpResponse);
+
+        return client;
+    }
+
+    private DefaultCAClient createClientWithJsonContent(String content) throws IOException {
+        DefaultCAClient client = new DefaultCAClient(Executor.newInstance(httpClient));
+
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(httpResponse.getEntity()).thenReturn(httpEntity);
+        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(content.getBytes()));
+        when(httpClient.execute(
+                Mockito.any(HttpUriRequest.class),
+                Mockito.any(HttpContext.class))).thenReturn(httpResponse);
+
+        return client;
     }
 
     private byte[] createCSR() throws IOException, OperatorCreationException {
@@ -103,10 +150,9 @@ public class DefaultCAClientTest {
         return os.toByteArray();
     }
 
-    // TODO(mh): Run with a CA container?
     @Ignore
     @Test
-    public void testSign() throws Exception {
+    public void testSignAgainstRunningCluster() throws Exception {
         DefaultCAClient client = new DefaultCAClient(CA_BASE_URL, createAuthenticatedExecutor());
         X509Certificate certificate = client.sign(createCSR());
         Assert.assertNotNull(certificate);
@@ -114,10 +160,26 @@ public class DefaultCAClientTest {
 
     @Ignore
     @Test
-    public void testBundle() throws Exception {
+    public void testBundleAgainstRunningCluster() throws Exception {
         DefaultCAClient client = new DefaultCAClient(CA_BASE_URL, createAuthenticatedExecutor());
         X509Certificate certificate = client.sign(createCSR());
         Collection<X509Certificate> certificates = client.chainWithRootCert(certificate);
         Assert.assertTrue(certificates.size() > 0);
     }
+
+    @Test
+    public void testSignWithCorrectResponse() throws Exception {
+        String response = new String(Files.readAllBytes(
+                Paths.get(
+                    getClass().getClassLoader().getResource("response-ca-sign-valid.json").getPath())));
+        DefaultCAClient client = createClientWithJsonContent(response);
+        X509Certificate certificate = client.sign(createCSR());
+        Assert.assertEquals(certificate.getSerialNumber(),
+                new BigInteger("232536721977418639703314578745637408882101009293"));
+        Assert.assertEquals(certificate.getSigAlgName(), "SHA256withRSA");
+    }
+
+    // TODO(mh): Sign - error
+    //           Sign - non-200 code
+    //           All of chainWithRootCert(), valid, non-200, error
 }
