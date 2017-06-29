@@ -1,5 +1,7 @@
 package com.mesosphere.sdk.dcos;
 
+import com.mesosphere.sdk.dcos.ca.CAException;
+
 import java.io.IOException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
@@ -19,7 +21,7 @@ public interface CertificateAuthorityClient {
      * @throws IOException
      * @throws CertificateException
      */
-    X509Certificate sign(byte[] csr) throws IOException, CertificateException;
+    X509Certificate sign(byte[] csr) throws IOException, CertificateException, CAException;
 
     /**
      * Retrieves complete certificate chain including a root CA certificate for given certificate.
@@ -29,6 +31,6 @@ public interface CertificateAuthorityClient {
      * @throws CertificateException
      */
     Collection<X509Certificate> chainWithRootCert(
-            X509Certificate certificate) throws IOException, CertificateException;
+            X509Certificate certificate) throws IOException, CertificateException, CAException;
 
 }

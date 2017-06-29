@@ -241,7 +241,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
             String privateKeyPEM,
             String rootCACertPEM,
             KeyStore keyStore,
-            KeyStore trustStore) throws IOException, SecretsException, CertificateException, NoSuchAlgorithmException, KeyStoreException {
+            KeyStore trustStore) throws IOException, SecretsException, CertificateException,
+            NoSuchAlgorithmException, KeyStoreException {
 
         // TODO(mh): How should we handle partially existing secrets?
         try {

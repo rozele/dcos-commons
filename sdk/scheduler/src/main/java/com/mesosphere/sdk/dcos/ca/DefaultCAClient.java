@@ -3,6 +3,9 @@ package com.mesosphere.sdk.dcos.ca;
 import com.mesosphere.sdk.dcos.CertificateAuthorityClient;
 import com.mesosphere.sdk.dcos.DcosConstants;
 import com.mesosphere.sdk.dcos.http.URLHelper;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.client.fluent.ContentResponseHandler;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.fluent.Response;
@@ -15,13 +18,13 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 /**
  * A default implementation of {@link CertificateAuthorityClient}.
@@ -50,7 +53,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
     }
 
     @Override
-    public X509Certificate sign(byte[] csr) throws IOException, CertificateException {
+    public X509Certificate sign(byte[] csr) throws IOException, CertificateException, CAException {
         JSONObject data = new JSONObject();
         data.put("certificate_request", new String(csr, Charset.forName("UTF-8")));
         data.put("profile", "");
@@ -58,11 +61,17 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         Request request = Request.Post(URLHelper.addPathUnchecked(baseURL, "sign").toString())
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
         Response response = httpExecutor.execute(request);
+        HttpResponse httpResponse = response.returnResponse();
 
-        // TODO(mh): Add error code handling
+        handleResponseStatusLine(httpResponse.getStatusLine(), 200);
 
-        String responseContent = response.returnContent().asString();
+        String responseContent = new ContentResponseHandler().handleEntity(httpResponse.getEntity()).asString();
         data = new JSONObject(responseContent);
+
+        if (!data.getBoolean("success")) {
+            throw new CAException(getErrorString(data));
+        }
+
         String certificate = data.getJSONObject("result").getString("certificate");
 
         return (X509Certificate) certificateFactory
@@ -72,23 +81,22 @@ public class DefaultCAClient implements CertificateAuthorityClient {
 
     @Override
     public Collection<X509Certificate> chainWithRootCert(
-            X509Certificate certificate) throws IOException, CertificateException {
+            X509Certificate certificate) throws IOException, CertificateException, CAException {
         JSONObject data = new JSONObject();
         data.put("certificate", PEMHelper.toPEM(certificate));
 
         Request request = Request.Post(URLHelper.addPathUnchecked(baseURL, "bundle").toString())
                 .bodyString(data.toString(), ContentType.APPLICATION_JSON);
         Response response = httpExecutor.execute(request);
+        HttpResponse httpResponse = response.returnResponse();
 
-        String responseContent = response.returnContent().asString();
+        handleResponseStatusLine(httpResponse.getStatusLine(), 200);
+
+        String responseContent = new ContentResponseHandler().handleEntity(httpResponse.getEntity()).asString();
         data = new JSONObject(responseContent);
 
         if (!data.getBoolean("success")) {
-            StringBuilder stringBuilder = new StringBuilder();
-            for (Object errorMessage : data.getJSONArray("errors")) {
-                stringBuilder.append(errorMessage + "\n");
-            }
-            throw new CertificateException(stringBuilder.toString());
+            throw new CAException(getErrorString(data));
         }
 
         String bundle = data.getJSONObject("result").getString("bundle");
@@ -115,6 +123,35 @@ public class DefaultCAClient implements CertificateAuthorityClient {
         );
 
         return certificates;
+    }
+
+    /**
+     * Handle common responses from different API endpoints of DC/OS CA service.
+     * @param statusLine
+     * @param okCode
+     * @throws CAException
+     */
+    protected void handleResponseStatusLine(StatusLine statusLine, int okCode) throws CAException {
+        if (statusLine.getStatusCode() == okCode) {
+            return;
+        }
+
+        if (statusLine.getStatusCode() >= 400) {
+            throw new CAException(String.format("%d - error from CA", statusLine.getStatusCode()));
+        }
+    }
+
+    /**
+     * Extracts the error messages from JSON response.
+     * @param data
+     * @return
+     */
+    private String getErrorString(JSONObject data) {
+        return StreamSupport
+                .stream(data.getJSONArray("errors").spliterator(), false)
+                .map(error -> (JSONObject) error)
+                .map(error -> String.format("[%d] %s", error.getInt("code"), error.getString("message")))
+                .collect(Collectors.joining("\n"));
     }
 
 }

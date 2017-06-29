@@ -10,9 +10,12 @@ import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.protocol.HttpContext;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
+import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.*;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
@@ -21,10 +24,8 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemWriter;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.*;
+import org.junit.rules.ExpectedException;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
@@ -41,8 +42,11 @@ import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.Date;
 
 import static org.mockito.Mockito.when;
 
@@ -61,6 +65,9 @@ public class DefaultCAClientTest {
     @Mock private HttpResponse httpResponse;
     @Mock private HttpEntity httpEntity;
     @Mock private StatusLine statusLine;
+
+    @Rule
+    public ExpectedException thrown = ExpectedException.none();
 
     @Before
     public void init() throws NoSuchAlgorithmException, MalformedURLException {
@@ -83,8 +90,7 @@ public class DefaultCAClientTest {
 
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpResponse.getEntity()).thenReturn(httpEntity);
-        String data = "{}";
-        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(data.getBytes()));
+        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(new byte[0]));
         when(httpClient.execute(
                 Mockito.any(HttpUriRequest.class),
                 Mockito.any(HttpContext.class))).thenReturn(httpResponse);
@@ -97,7 +103,10 @@ public class DefaultCAClientTest {
 
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
         when(httpResponse.getEntity()).thenReturn(httpEntity);
-        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream(content.getBytes()));
+        // Because of how CA client reads entity twice create 2 responses that represent same buffer.
+        when(httpEntity.getContent()).thenReturn(
+                new ByteArrayInputStream(content.getBytes("UTF-8")),
+                new ByteArrayInputStream(content.getBytes("UTF-8")));
         when(httpClient.execute(
                 Mockito.any(HttpUriRequest.class),
                 Mockito.any(HttpContext.class))).thenReturn(httpResponse);
@@ -108,9 +117,9 @@ public class DefaultCAClientTest {
     private byte[] createCSR() throws IOException, OperatorCreationException {
         KeyPair keyPair = KEY_PAIR_GENERATOR.generateKeyPair();
 
-        X500NameBuilder nameBuilder = new X500NameBuilder();
-        nameBuilder.addRDN(BCStyle.CN, "testing");
-        org.bouncycastle.asn1.x500.X500Name name = nameBuilder.build();
+        X500Name name = new X500NameBuilder()
+                .addRDN(BCStyle.CN, "issuer")
+                .build();
 
         ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
 
@@ -150,6 +159,50 @@ public class DefaultCAClientTest {
         return os.toByteArray();
     }
 
+    private X509Certificate createCertificate() throws Exception {
+        KeyPair keyPair = KEY_PAIR_GENERATOR.generateKeyPair();
+
+        SubjectPublicKeyInfo subjectPublicKeyInfo = SubjectPublicKeyInfo.getInstance(
+                keyPair.getPublic().getEncoded());
+
+        X500Name issuer = new X500NameBuilder()
+                .addRDN(BCStyle.CN, "issuer")
+                .build();
+
+        X500Name subject = new X500NameBuilder()
+                .addRDN(BCStyle.CN, "subject")
+                .build();
+
+        ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA").build(keyPair.getPrivate());
+
+        CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+        X509CertificateHolder certHolder = new X509v3CertificateBuilder(
+                issuer,
+                new BigInteger("1000"),
+                Date.from(Instant.now()),
+                Date.from(Instant.now().plusSeconds(100000)),
+                subject,
+                subjectPublicKeyInfo
+                )
+                .build(signer);
+        return (X509Certificate) certificateFactory.
+                generateCertificate(
+                        new ByteArrayInputStream(certHolder.getEncoded()));
+    }
+
+    private String readResourceJson(String name) throws IOException {
+       return new String(
+               Files.readAllBytes(
+                       Paths.get(
+                            getClass()
+                                    .getClassLoader()
+                                    .getResource(name)
+                                    .getPath()
+                       )
+               ),
+               "UTF-8");
+    }
+
     @Ignore
     @Test
     public void testSignAgainstRunningCluster() throws Exception {
@@ -169,17 +222,64 @@ public class DefaultCAClientTest {
 
     @Test
     public void testSignWithCorrectResponse() throws Exception {
-        String response = new String(Files.readAllBytes(
-                Paths.get(
-                    getClass().getClassLoader().getResource("response-ca-sign-valid.json").getPath())));
-        DefaultCAClient client = createClientWithJsonContent(response);
+        DefaultCAClient client = createClientWithJsonContent(
+                readResourceJson("response-ca-sign-valid.json"));
         X509Certificate certificate = client.sign(createCSR());
         Assert.assertEquals(certificate.getSerialNumber(),
                 new BigInteger("232536721977418639703314578745637408882101009293"));
         Assert.assertEquals(certificate.getSigAlgName(), "SHA256withRSA");
     }
 
-    // TODO(mh): Sign - error
-    //           Sign - non-200 code
-    //           All of chainWithRootCert(), valid, non-200, error
+    @Test
+    public void testSignWithErrorInResponse() throws Exception {
+        DefaultCAClient client = createClientWithJsonContent(
+                readResourceJson("response-ca-sign-with-error.json"));
+
+        thrown.expect(CAException.class);
+        thrown.expectMessage("[1234] Test error");
+
+        client.sign(createCSR());
+    }
+
+    @Test
+    public void testSignWithNon200Response() throws Exception {
+        when(statusLine.getStatusCode()).thenReturn(400);
+        DefaultCAClient client = createClientWithStatusLine(statusLine);
+
+        thrown.expect(CAException.class);
+        thrown.expectMessage("400 - error from CA");
+
+        client.sign(createCSR());
+    }
+
+    @Test
+    public void testChainWithRootCertWithCorrectResponse() throws Exception {
+        DefaultCAClient client = createClientWithJsonContent(
+                readResourceJson("response-ca-bundle-valid.json"));
+        Collection<X509Certificate> chain = client.chainWithRootCert(createCertificate());
+        Assert.assertTrue(chain.size() > 0);
+    }
+
+    @Test
+    public void testChainWithRootCertWithErrorInResponse() throws Exception {
+        DefaultCAClient client = createClientWithJsonContent(
+                readResourceJson("response-ca-bundle-with-error.json"));
+
+        thrown.expect(CAException.class);
+        thrown.expectMessage("[1234] Test message");
+
+        client.chainWithRootCert(createCertificate());
+    }
+
+    @Test
+    public void testChainWithRootCertWithNon200Response() throws Exception {
+        when(statusLine.getStatusCode()).thenReturn(400);
+        DefaultCAClient client = createClientWithStatusLine(statusLine);
+
+        thrown.expect(CAException.class);
+        thrown.expectMessage("400 - error from CA");
+
+        client.chainWithRootCert(createCertificate());
+    }
+
 }
