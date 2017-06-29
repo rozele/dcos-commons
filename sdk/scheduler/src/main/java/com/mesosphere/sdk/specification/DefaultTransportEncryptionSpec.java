@@ -65,7 +65,7 @@ public class DefaultTransportEncryptionSpec implements TransportEncryptionSpec {
         private String name;
         private Type type;
 
-        private Builder() {}
+        public Builder() {}
 
         public Builder name(String name) {
             this.name = name;

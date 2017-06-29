@@ -52,9 +52,6 @@ public interface PodSpec {
     @JsonProperty("secrets")
     Collection<SecretSpec> getSecrets();
 
-    @JsonProperty("transport-encryption")
-    Optional<TransportEncryptionSpec> getTransportEncryption();
-
     @JsonIgnore
     static String getName(PodSpec podSpec, int index) {
         return podSpec.getType() + "-" + index;
