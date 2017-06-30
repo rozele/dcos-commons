@@ -2,7 +2,6 @@ package com.mesosphere.sdk.specification.yaml;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 

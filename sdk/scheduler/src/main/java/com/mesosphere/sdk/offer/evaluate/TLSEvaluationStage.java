@@ -148,7 +148,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                                 throw new UncheckedIOException(e);
                             }
                         })
-                        .collect(Collectors.joining("\n"));
+                        .collect(Collectors.joining(""));
 
                 // Serialize private key and Root CA cert to PEM format
                 String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
@@ -159,11 +159,12 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 KeyStore keyStore = createEmptyKeyStore();
                 keyStore.setCertificateEntry(filenameInContainer, certificate);
 
+                // KeyStore expects complete chain with end-entity certificate
                 certificateChain.add(0, certificate);
-                Certificate[] keyStoreChain = new Certificate[]{};
-                certificateChain.toArray(keyStoreChain);
+                Certificate[] keyStoreChain = certificateChain.toArray(
+                        new Certificate[certificateChain.size()]);
 
-                keyStore.setKeyEntry(filenameInContainer, keyPair.getPrivate().getEncoded(), keyStoreChain);
+                keyStore.setKeyEntry(filenameInContainer, keyPair.getPrivate(), new char[0], keyStoreChain);
 
                 KeyStore trustStore = createEmptyKeyStore();
                 trustStore.setCertificateEntry("dcos-root", certificateChain.get(certificateChain.size() - 1));
@@ -175,7 +176,8 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                         this, "Failed to store TLS artifacts for task %s because of exception: %s", taskName, e);
             }
 
-            Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(transportEncryptionSpec, secretNameGenerator);
+            Collection<Protos.Volume> volumes = getExecutorInfoSecretVolumes(
+                    transportEncryptionSpec, secretNameGenerator);
 
             // Share keys to the container
             Optional<Protos.ExecutorInfo.Builder> executorBuilder = podInfoBuilder.getExecutorBuilder();
