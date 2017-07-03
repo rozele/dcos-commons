@@ -47,7 +47,7 @@ public class TLSArtifactsGenerator {
         this.certificateAuthorityClient = certificateAuthorityClient;
     }
 
-    public TLSArtifacts provision()
+    public TLSArtifacts generate()
             throws IOException, KeyStoreException, CertificateException, CAException,
             OperatorCreationException, NoSuchAlgorithmException {
 

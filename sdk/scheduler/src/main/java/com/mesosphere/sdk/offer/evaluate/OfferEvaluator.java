@@ -166,8 +166,8 @@ public class OfferEvaluator {
             evaluationPipeline.addAll(getNewEvaluationPipeline(serviceName, podInstanceRequirement, allTasks));
         } else {
             evaluationPipeline.addAll(
-                    // TODO(mh): Add TLS for existing pipelines
-                    getExistingEvaluationPipeline(podInstanceRequirement, thisPodTasks, allTasks, executorInfo.get()));
+                    getExistingEvaluationPipeline(
+                            serviceName, podInstanceRequirement, thisPodTasks, allTasks, executorInfo.get()));
         }
 
         return evaluationPipeline;
@@ -246,6 +246,13 @@ public class OfferEvaluator {
             Collection<Protos.TaskInfo> allTasks) {
         Map<String, ResourceSet> resourceSets = getNewResourceSets(podInstanceRequirement);
 
+        Optional<TLSEvaluationStage.Builder> tlsBuilder = Optional.empty();
+        try {
+            tlsBuilder = Optional.of(TLSEvaluationStage.Builder.fromEnvironment());
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+            logger.error("Failed to create TLSEvaluationStage.Builder, no TLS will be provisioned", e);
+        }
+
         List<OfferEvaluationStage> evaluationStages = new ArrayList<>();
         if (podInstanceRequirement.getPodInstance().getPod().getPlacementRule().isPresent()) {
             evaluationStages.add(new PlacementRuleEvaluationStage(
@@ -296,18 +303,21 @@ public class OfferEvaluator {
                     .get();
 
             if (taskSpec.getTransportEncryption().size() > 0) {
-                try {
-                    evaluationStages.add(TLSEvaluationStage.fromEnvironmentForService(serviceName, taskName));
-                } catch (NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+                if (tlsBuilder.isPresent()) {
+                    evaluationStages.add(tlsBuilder
+                            .get()
+                            .setServiceName(serviceName)
+                            .setTaskName(taskName)
+                            .build());
+                } else {
                     evaluationStages.add(new OfferEvaluationStage() {
                         @Override
                         public EvaluationOutcome evaluate(
                                 MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
                             return EvaluationOutcome.fail(
-                                    this, "Failed to TLSEvaluationStage: %s", e);
+                                    this, "Task '%s' has requested TLS which can't be provisioned", taskName);
                         }
                     });
-                    logger.error("Failed to create TLSEvaluationStage", e);
                 }
             }
 
@@ -319,10 +329,18 @@ public class OfferEvaluator {
     }
 
     private static List<OfferEvaluationStage> getExistingEvaluationPipeline(
+            String serviceName,
             PodInstanceRequirement podInstanceRequirement,
             Map<String, Protos.TaskInfo> podTasks,
             Collection<Protos.TaskInfo> allTasks,
             Protos.ExecutorInfo executorInfo) {
+
+        Optional<TLSEvaluationStage.Builder> tlsBuilder = Optional.empty();
+        try {
+            tlsBuilder = Optional.of(TLSEvaluationStage.Builder.fromEnvironment());
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+            logger.error("Failed to create TLSEvaluationStage.Builder, no TLS will be provisioned", e);
+        }
 
         List<TaskSpec> taskSpecs = podInstanceRequirement.getPodInstance().getPod().getTasks().stream()
                 .filter(taskSpec -> podInstanceRequirement.getTasksToLaunch().contains(taskSpec.getName()))
@@ -362,6 +380,25 @@ public class OfferEvaluator {
             taskResourceMapper.getOrphanedResources()
                     .forEach(resource -> evaluationStages.add(new UnreserveEvaluationStage(resource)));
             evaluationStages.addAll(taskResourceMapper.getEvaluationStages());
+
+            if (taskSpec.getTransportEncryption().size() > 0) {
+                if (tlsBuilder.isPresent()) {
+                    evaluationStages.add(tlsBuilder
+                            .get()
+                            .setServiceName(serviceName)
+                            .setTaskName(taskSpec.getName())
+                            .build());
+                } else {
+                    evaluationStages.add(new OfferEvaluationStage() {
+                        @Override
+                        public EvaluationOutcome evaluate(
+                                MesosResourcePool mesosResourcePool, PodInfoBuilder podInfoBuilder) {
+                            return EvaluationOutcome.fail(
+                                    this, "Task '%s' has requested TLS which can't be provisioned", taskSpec.getName());
+                        }
+                    });
+                }
+            }
 
             boolean shouldLaunch = podInstanceRequirement.getTasksToLaunch().contains(taskSpec.getName());
             evaluationStages.add(new LaunchEvaluationStage(taskSpec.getName(), shouldLaunch));

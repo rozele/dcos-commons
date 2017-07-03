@@ -20,14 +20,14 @@ import java.util.stream.Collectors;
 /**
  * Stores TLSArtifacts to a secret service.
  */
-public class TLSArtifactsPersister {
+public class TLSArtifactsPersistor {
 
     private SecretsClient secretsClient;
     private String serviceName;
 
     private Logger logger = LoggerFactory.getLogger(getClass());
 
-    public TLSArtifactsPersister(SecretsClient secretsClient, String serviceName) {
+    public TLSArtifactsPersistor(SecretsClient secretsClient, String serviceName) {
         this.secretsClient = secretsClient;
         this.serviceName = serviceName;
     }
@@ -36,7 +36,7 @@ public class TLSArtifactsPersister {
      * Store TLSArtifacts set to secret service.
      *
      * This method expects the namespace to be empty and no secret is existing. To clean up the namespace
-     * use {@link TLSArtifactsPersister::cleanUpSecrets} call.
+     * use {@link TLSArtifactsPersistor ::cleanUpSecrets} call.
      * @param tlsArtifacts
      */
     public void persist(

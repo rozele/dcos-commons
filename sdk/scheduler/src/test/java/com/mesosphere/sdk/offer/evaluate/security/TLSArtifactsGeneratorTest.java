@@ -28,7 +28,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 
-import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
 
 public class TLSArtifactsGeneratorTest {
@@ -100,7 +99,7 @@ public class TLSArtifactsGeneratorTest {
         when(certificateAuthorityClientMock
                 .chainWithRootCert(Matchers.<X509Certificate>any())).thenReturn(chain);
 
-        TLSArtifacts tlsArtifacts = createTLSArtifactsGenerator().provision();
+        TLSArtifacts tlsArtifacts = createTLSArtifactsGenerator().generate();
 
         Assert.assertTrue(
                 tlsArtifacts.getCertPEM().contains(
@@ -140,7 +139,7 @@ public class TLSArtifactsGeneratorTest {
         when(certificateAuthorityClientMock
                 .chainWithRootCert(Matchers.<X509Certificate>any())).thenReturn(chain);
 
-        TLSArtifacts tlsArtifacts = createTLSArtifactsGenerator().provision();
+        TLSArtifacts tlsArtifacts = createTLSArtifactsGenerator().generate();
 
         Assert.assertEquals(
                 tlsArtifacts.getCertPEM(), PEMHelper.toPEM(endEntityCert));

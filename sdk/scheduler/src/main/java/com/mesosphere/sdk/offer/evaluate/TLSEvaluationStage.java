@@ -14,7 +14,7 @@ import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.offer.evaluate.security.SecretNameGenerator;
 import com.mesosphere.sdk.offer.evaluate.security.TLSArtifacts;
 import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsGenerator;
-import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersister;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersistor;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.TaskSpec;
 import com.mesosphere.sdk.specification.TransportEncryptionSpec;
@@ -25,6 +25,7 @@ import org.bouncycastle.util.io.pem.PemReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.validation.Valid;
 import java.io.IOException;
 import java.io.StringReader;
 import java.security.KeyFactory;
@@ -45,59 +46,22 @@ import java.util.Optional;
  */
 public class TLSEvaluationStage implements OfferEvaluationStage {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TLSEvaluationStage.class);
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
     private String serviceName;
     private String taskName;
-    private CertificateAuthorityClient certificateAuthorityClient;
-    private SecretsClient secretsClient;
-    private KeyPairGenerator keyPairGenerator;
+    private TLSArtifactsPersistor tlsArtifactsPersistor;
+    private TLSArtifactsGenerator tlsArtifactsGenerator;
 
     public TLSEvaluationStage(
             String serviceName,
             String taskName,
-            CertificateAuthorityClient certificateAuthorityClient,
-            SecretsClient secretsClient,
-            KeyPairGenerator keyPairGenerator) {
+            TLSArtifactsPersistor tlsArtifactsPersistor,
+            TLSArtifactsGenerator tlsArtifactsGenerator) {
         this.serviceName = serviceName;
         this.taskName = taskName;
-        this.certificateAuthorityClient = certificateAuthorityClient;
-        this.secretsClient = secretsClient;
-        this.keyPairGenerator = keyPairGenerator;
-    }
-
-    public static TLSEvaluationStage fromEnvironmentForService(
-            String serviceName,
-            String taskName) throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
-
-        SchedulerFlags flags = SchedulerFlags.fromEnv();
-
-        KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-
-        PemReader pemReader = new PemReader(new StringReader(flags.getServiceAccountPrivateKeyPEM()));
-        PrivateKey privateKey = keyFactory.generatePrivate(
-                new PKCS8EncodedKeySpec(pemReader.readPemObject().getContent()));
-
-        ServiceAccountIAMTokenProvider serviceAccountIAMTokenProvider = new ServiceAccountIAMTokenProvider.Builder()
-                .setIamUrl(URLHelper.fromUnchecked(DcosConstants.IAM_AUTH_URL))
-                .setUid(flags.getServiceAccountUid())
-                .setPrivateKey((RSAPrivateKey) privateKey)
-                .build();
-        TokenProvider tokenProvider = new CachedTokenProvider(serviceAccountIAMTokenProvider);
-
-        Executor executor = Executor.newInstance(
-                new DcosHttpClientBuilder()
-                        .setTokenProvider(tokenProvider)
-                        .setRedirectStrategy(new LaxRedirectStrategy())
-                        .build());
-
-        CertificateAuthorityClient certificateAuthorityClient = new DefaultCAClient(executor);
-        SecretsClient secretsClient = new DefaultSecretsClient(executor);
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-
-        return new TLSEvaluationStage(
-                serviceName, taskName, certificateAuthorityClient, secretsClient, keyPairGenerator);
-
+        this.tlsArtifactsPersistor = tlsArtifactsPersistor;
+        this.tlsArtifactsGenerator = tlsArtifactsGenerator;
     }
 
     @Override
@@ -112,24 +76,20 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                     taskName,
                     transportEncryptionName);
 
-            TLSArtifactsPersister persister = new TLSArtifactsPersister(secretsClient, serviceName);
-
             try {
-                if (!persister.isArtifactComplete(secretNameGenerator)) {
-                    persister.cleanUpSecrets(secretNameGenerator);
+                if (!tlsArtifactsPersistor.isArtifactComplete(secretNameGenerator)) {
+                    tlsArtifactsPersistor.cleanUpSecrets(secretNameGenerator);
 
-                    TLSArtifacts tlsArtifacts = new TLSArtifactsGenerator(
-                            serviceName, taskName, keyPairGenerator, certificateAuthorityClient)
-                            .provision();
-                    persister.persist(secretNameGenerator, tlsArtifacts);
+                    TLSArtifacts tlsArtifacts = this.tlsArtifactsGenerator.generate();
+                    tlsArtifactsPersistor.persist(secretNameGenerator, tlsArtifacts);
                 } else {
-                    LOGGER.info(
+                    logger.info(
                             String.format(
                                     "Task '%s' has already all secrets for '%s' TLS config",
                                     taskName, transportEncryptionName));
                 }
             } catch (Exception e) {
-                LOGGER.error("Failed to get certificate ", taskName, e);
+                logger.error("Failed to get certificate ", taskName, e);
                 return EvaluationOutcome.fail(
                         this, "Failed to store TLS artifacts for task %s because of exception: %s", taskName, e);
             }
@@ -163,7 +123,6 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 .filter(task -> task.getName().equals(taskName))
                 .findFirst()
                 .get();
-
     }
 
     private Collection<Protos.Volume> getExecutorInfoSecretVolumes(
@@ -200,6 +159,127 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 .setType(Protos.Secret.Type.REFERENCE)
                 .setReference(Protos.Secret.Reference.newBuilder().setName(secretPath))
                 .build();
+    }
+
+    /**
+     * A {@link Builder} allows to create a {@link TLSEvaluationStage} instance.
+     */
+    public static class Builder {
+
+        @Valid
+        private String serviceName;
+        @Valid
+        private String taskName;
+
+        private CertificateAuthorityClient certificateAuthorityClient;
+        private SecretsClient secretsClient;
+        private KeyPairGenerator keyPairGenerator;
+
+        private TLSArtifactsGenerator tlsArtifactsGenerator;
+        private TLSArtifactsPersistor tlsArtifactsPersistor;
+
+        public static Builder fromEnvironment()
+                throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+
+            SchedulerFlags flags = SchedulerFlags.fromEnv();
+
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+            PemReader pemReader = new PemReader(new StringReader(flags.getServiceAccountPrivateKeyPEM()));
+            PrivateKey privateKey = keyFactory.generatePrivate(
+                    new PKCS8EncodedKeySpec(pemReader.readPemObject().getContent()));
+
+            ServiceAccountIAMTokenProvider serviceAccountIAMTokenProvider = new ServiceAccountIAMTokenProvider.Builder()
+                    .setIamUrl(URLHelper.fromUnchecked(DcosConstants.IAM_AUTH_URL))
+                    .setUid(flags.getServiceAccountUid())
+                    .setPrivateKey((RSAPrivateKey) privateKey)
+                    .build();
+            TokenProvider tokenProvider = new CachedTokenProvider(serviceAccountIAMTokenProvider);
+
+            Executor executor = Executor.newInstance(
+                    new DcosHttpClientBuilder()
+                            .setTokenProvider(tokenProvider)
+                            .setRedirectStrategy(new LaxRedirectStrategy())
+                            .build());
+
+            CertificateAuthorityClient certificateAuthorityClient = new DefaultCAClient(executor);
+            SecretsClient secretsClient = new DefaultSecretsClient(executor);
+
+            return new Builder()
+                    .setCertificateAuthorityClient(certificateAuthorityClient)
+                    .setSecretsClient(secretsClient);
+        }
+
+        public Builder() throws NoSuchAlgorithmException {
+            this.keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        }
+
+        public Builder setServiceName(String serviceName) {
+            this.serviceName = serviceName;
+            return this;
+        }
+
+        public Builder setTaskName(String taskName) {
+            this.taskName = taskName;
+            return this;
+        }
+
+        public CertificateAuthorityClient getCertificateAuthorityClient() {
+            return certificateAuthorityClient;
+        }
+
+        public Builder setCertificateAuthorityClient(CertificateAuthorityClient certificateAuthorityClient) {
+            this.certificateAuthorityClient = certificateAuthorityClient;
+            return this;
+        }
+
+        public SecretsClient getSecretsClient() {
+            return secretsClient;
+        }
+
+        public Builder setSecretsClient(SecretsClient secretsClient) {
+            this.secretsClient = secretsClient;
+            return this;
+        }
+
+        public KeyPairGenerator getKeyPairGenerator() {
+            return keyPairGenerator;
+        }
+
+        public Builder setKeyPairGenerator(KeyPairGenerator keyPairGenerator) {
+            this.keyPairGenerator = keyPairGenerator;
+            return this;
+        }
+
+        public Builder setTlsArtifactsGenerator(TLSArtifactsGenerator tlsArtifactsGenerator) {
+            this.tlsArtifactsGenerator = tlsArtifactsGenerator;
+            return this;
+        }
+
+        public Builder setTlsArtifactsPersistor(TLSArtifactsPersistor tlsArtifactsPersistor) {
+            this.tlsArtifactsPersistor = tlsArtifactsPersistor;
+            return this;
+        }
+
+        private TLSArtifactsPersistor getTLSArtifactsPersister() {
+            return tlsArtifactsPersistor == null ?
+                    new TLSArtifactsPersistor(getSecretsClient(), serviceName) : tlsArtifactsPersistor;
+        }
+
+        private TLSArtifactsGenerator getTLSArtifactsGenerator() {
+            return tlsArtifactsGenerator == null ?
+                    new TLSArtifactsGenerator(
+                        serviceName, taskName, getKeyPairGenerator(), getCertificateAuthorityClient()) :
+                    tlsArtifactsGenerator;
+        }
+
+        public TLSEvaluationStage build() {
+            return new TLSEvaluationStage(
+                    serviceName,
+                    taskName,
+                    getTLSArtifactsPersister(),
+                    getTLSArtifactsGenerator());
+        }
     }
 
 }
