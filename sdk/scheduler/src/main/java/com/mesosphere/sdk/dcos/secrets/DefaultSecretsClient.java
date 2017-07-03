@@ -9,7 +9,6 @@ import org.apache.http.StatusLine;
 import org.apache.http.client.fluent.ContentResponseHandler;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
 

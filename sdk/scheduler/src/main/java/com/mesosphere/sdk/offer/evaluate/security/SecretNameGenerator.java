@@ -1,5 +1,8 @@
 package com.mesosphere.sdk.offer.evaluate.security;
 
+import java.util.Arrays;
+import java.util.Collection;
+
 /**
  * Provides a way to generate paths for secrets storing a private key, a certificate and a keystore.
  */
@@ -13,6 +16,20 @@ public class SecretNameGenerator {
         this.serviceName = serviceName;
         this.transportEncryptionName = transportEncryptionName;
         this.taskName = taskName;
+    }
+
+    public String getTaskSecretsNamespace() {
+        return String.format("%s/%s/%s", serviceName, taskName, transportEncryptionName);
+    }
+
+    public Collection<String> getAllSecretPaths() {
+        return Arrays.asList(
+                getCertificatePath(),
+                getPrivateKeyPath(),
+                getRootCACertPath(),
+                getKeyStorePath(),
+                getTrustStorePath()
+        );
     }
 
     public String getCertificatePath() {
@@ -56,7 +73,7 @@ public class SecretNameGenerator {
     }
 
     private String getSecretPath(String name) {
-        return String.format("%s/%s/%s/%s", serviceName, taskName, transportEncryptionName, name);
+        return String.format("%s/%s", getTaskSecretsNamespace(), name);
     }
 
     private String getMountPath(String suffix) {

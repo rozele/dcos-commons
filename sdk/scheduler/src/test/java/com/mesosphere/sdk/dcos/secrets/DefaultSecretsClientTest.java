@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Collection;
 
@@ -122,9 +123,9 @@ public class DefaultSecretsClientTest {
 
         Assert.assertEquals(httpEntity.getContentType().getValue(), ContentType.APPLICATION_JSON.toString());
 
-        OutputStream content = new ByteArrayOutputStream();
+        ByteArrayOutputStream content = new ByteArrayOutputStream();
         httpEntity.writeTo(content);
-        JSONObject jsonObject = new JSONObject(content.toString());
+        JSONObject jsonObject = new JSONObject(content.toString("UTF-8"));
 
         Assert.assertEquals(jsonObject.getString("value"), secret.getValue());
         Assert.assertEquals(jsonObject.getString("author"), secret.getAuthor());
@@ -173,9 +174,9 @@ public class DefaultSecretsClientTest {
 
         Assert.assertEquals(httpEntity.getContentType().getValue(), ContentType.APPLICATION_JSON.toString());
 
-        OutputStream content = new ByteArrayOutputStream();
+        ByteArrayOutputStream content = new ByteArrayOutputStream();
         httpEntity.writeTo(content);
-        JSONObject jsonObject = new JSONObject(content.toString());
+        JSONObject jsonObject = new JSONObject(content.toString("UTF-8"));
 
         Assert.assertEquals(jsonObject.getString("value"), secret.getValue());
         Assert.assertEquals(jsonObject.getString("author"), secret.getAuthor());

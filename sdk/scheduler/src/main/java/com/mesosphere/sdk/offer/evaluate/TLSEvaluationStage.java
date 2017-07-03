@@ -7,47 +7,37 @@ import com.mesosphere.sdk.dcos.auth.CachedTokenProvider;
 import com.mesosphere.sdk.dcos.auth.ServiceAccountIAMTokenProvider;
 import com.mesosphere.sdk.dcos.auth.TokenProvider;
 import com.mesosphere.sdk.dcos.ca.DefaultCAClient;
-import com.mesosphere.sdk.dcos.ca.PEMHelper;
 import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import com.mesosphere.sdk.dcos.http.URLHelper;
-import com.mesosphere.sdk.dcos.secrets.AlreadyExistsException;
 import com.mesosphere.sdk.dcos.secrets.DefaultSecretsClient;
-import com.mesosphere.sdk.dcos.secrets.Secret;
-import com.mesosphere.sdk.dcos.secrets.SecretsException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
-import com.mesosphere.sdk.offer.evaluate.security.CertificateNamesGenerator;
 import com.mesosphere.sdk.offer.evaluate.security.SecretNameGenerator;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifacts;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsGenerator;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersister;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.TaskSpec;
 import com.mesosphere.sdk.specification.TransportEncryptionSpec;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.apache.mesos.Protos;
-import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
-import org.bouncycastle.asn1.x509.*;
-import org.bouncycastle.openssl.jcajce.JcaMiscPEMGenerator;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.OperatorCreationException;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.pkcs.PKCS10CertificationRequest;
-import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
-import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemReader;
-import org.bouncycastle.util.io.pem.PemWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
-import java.nio.charset.Charset;
-import java.security.*;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
+import java.io.IOException;
+import java.io.StringReader;
+import java.security.KeyFactory;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Optional;
 
 /**
  * A {@link TLSEvaluationStage} is responsible for provisioning X.509 certificates, converting them to
@@ -115,61 +105,29 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         TaskSpec taskSpec = findTaskSpec(podInfoBuilder);
 
         for (TransportEncryptionSpec transportEncryptionSpec : taskSpec.getTransportEncryption()) {
-            String filenameInContainer = transportEncryptionSpec.getName();
+            String transportEncryptionName = transportEncryptionSpec.getName();
 
             SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                     serviceName,
                     taskName,
-                    filenameInContainer);
+                    transportEncryptionName);
+
+            TLSArtifactsPersister persister = new TLSArtifactsPersister(secretsClient, serviceName);
 
             try {
-                KeyPair keyPair = keyPairGenerator.generateKeyPair();
+                if (!persister.isArtifactComplete(secretNameGenerator)) {
+                    persister.cleanUpSecrets(secretNameGenerator);
 
-                // Get new end-entity certificate from CA
-                X509Certificate certificate = certificateAuthorityClient.sign(generateCSR(keyPair));
-
-                // Get end-entity bundle with Root CA certificate
-                ArrayList<X509Certificate> certificateChain = (ArrayList<X509Certificate>)
-                        certificateAuthorityClient.chainWithRootCert(certificate);
-
-                // Build end-entity certificate with CA chain without Root CA certificate
-                ArrayList<X509Certificate> endEntityCertificateWithChain = new ArrayList<>();
-                endEntityCertificateWithChain.add(certificate);
-                // Add all possible certificates in the chain
-                if (certificateChain.size() > 1) {
-                    endEntityCertificateWithChain.addAll(certificateChain.subList(0, certificateChain.size() - 1));
+                    TLSArtifacts tlsArtifacts = new TLSArtifactsGenerator(
+                            serviceName, taskName, keyPairGenerator, certificateAuthorityClient)
+                            .provision();
+                    persister.persist(secretNameGenerator, tlsArtifacts);
+                } else {
+                    LOGGER.info(
+                            String.format(
+                                    "Task '%s' has already all secrets for '%s' TLS config",
+                                    taskName, transportEncryptionName));
                 }
-                // Convert to pem and join to a single string
-                String certPEM = endEntityCertificateWithChain.stream()
-                        .map(cert -> {
-                            try {
-                                return PEMHelper.toPEM(cert);
-                            } catch (IOException e) {
-                                throw new UncheckedIOException(e);
-                            }
-                        })
-                        .collect(Collectors.joining(""));
-
-                // Serialize private key and Root CA cert to PEM format
-                String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
-                String rootCACertPEM = PEMHelper.toPEM(
-                        certificateChain.get(certificateChain.size() - 1));
-
-                // Create keystore and trust store
-                KeyStore keyStore = createEmptyKeyStore();
-                keyStore.setCertificateEntry(filenameInContainer, certificate);
-
-                // KeyStore expects complete chain with end-entity certificate
-                certificateChain.add(0, certificate);
-                Certificate[] keyStoreChain = certificateChain.toArray(
-                        new Certificate[certificateChain.size()]);
-
-                keyStore.setKeyEntry(filenameInContainer, keyPair.getPrivate(), new char[0], keyStoreChain);
-
-                KeyStore trustStore = createEmptyKeyStore();
-                trustStore.setCertificateEntry("dcos-root", certificateChain.get(certificateChain.size() - 1));
-
-                storeSecrets(secretNameGenerator, certPEM, privateKeyPEM, rootCACertPEM, keyStore, trustStore);
             } catch (Exception e) {
                 LOGGER.error("Failed to get certificate ", taskName, e);
                 return EvaluationOutcome.fail(
@@ -244,105 +202,4 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                 .build();
     }
 
-    private void storeSecrets(
-            SecretNameGenerator secretNameGenerator,
-            String certPEM,
-            String privateKeyPEM,
-            String rootCACertPEM,
-            KeyStore keyStore,
-            KeyStore trustStore) throws IOException, SecretsException, CertificateException,
-            NoSuchAlgorithmException, KeyStoreException {
-
-        // TODO(mh): How should we handle partially existing secrets?
-        try {
-            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getCertificatePath()));
-            secretsClient.create(
-                    secretNameGenerator.getCertificatePath(),
-                    buildSecret(certPEM, "PEM encoded certificate"));
-
-            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getPrivateKeyPath()));
-            secretsClient.create(
-                    secretNameGenerator.getPrivateKeyPath(),
-                    buildSecret(privateKeyPEM, "PEM encoded private key"));
-
-            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getRootCACertPath()));
-            secretsClient.create(
-                    secretNameGenerator.getRootCACertPath(),
-                    buildSecret(rootCACertPEM, "PEM encoded root CA certificate"));
-
-            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getKeyStorePath()));
-            secretsClient.create(
-                    secretNameGenerator.getKeyStorePath(),
-                    buildSecret(serializeKeyStoreToBase64(keyStore), "Base64 encoded java keystore"));
-
-            LOGGER.info(String.format("Creating new secret: %s", secretNameGenerator.getTrustStorePath()));
-            secretsClient.create(
-                    secretNameGenerator.getTrustStorePath(),
-                    buildSecret(serializeKeyStoreToBase64(trustStore), "Base64 encoded java trust store"));
-        } catch (AlreadyExistsException e) {
-            LOGGER.info("Secret already exists", e);
-        }
-    }
-
-    private Secret buildSecret(String value, String description) {
-        return new Secret.Builder()
-                .value(value)
-                .author(serviceName)
-                .description(description)
-                .build();
-    }
-
-    private KeyStore createEmptyKeyStore()
-            throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
-        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        keyStore.load(null, new char[0]);
-        return keyStore;
-    }
-
-    private String serializeKeyStoreToBase64(
-            KeyStore keyStore) throws CertificateException, NoSuchAlgorithmException, KeyStoreException, IOException {
-        ByteArrayOutputStream keyStoreOs = new ByteArrayOutputStream();
-        keyStore.store(keyStoreOs, new char[0]);
-        return Base64.getEncoder().encodeToString(keyStoreOs.toByteArray());
-    }
-
-    private byte[] generateCSR(
-            KeyPair keyPair) throws IOException, OperatorCreationException {
-
-        CertificateNamesGenerator certificateNamesGenerator = new CertificateNamesGenerator(
-                serviceName, taskName);
-
-        ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
-
-        extensionsGenerator.addExtension(
-                Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature));
-
-        extensionsGenerator.addExtension(
-                Extension.extendedKeyUsage,
-                true,
-                new ExtendedKeyUsage(
-                        new KeyPurposeId[] {
-                                KeyPurposeId.id_kp_clientAuth,
-                                KeyPurposeId.id_kp_serverAuth
-                        }
-                ));
-
-        extensionsGenerator.addExtension(
-                Extension.subjectAlternativeName, true, certificateNamesGenerator.getSANs());
-
-        ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA")
-                .build(keyPair.getPrivate());
-
-        PKCS10CertificationRequestBuilder csrBuilder = new JcaPKCS10CertificationRequestBuilder(
-                certificateNamesGenerator.getSubject(), keyPair.getPublic())
-                .addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
-        PKCS10CertificationRequest csr = csrBuilder.build(signer);
-
-        ByteArrayOutputStream os = new ByteArrayOutputStream();
-        PemWriter writer = new PemWriter(new OutputStreamWriter(os, Charset.forName("UTF-8")));
-        writer.writeObject(new JcaMiscPEMGenerator(csr));
-        writer.flush();
-
-        return os.toByteArray();
-    }
 }
