@@ -4,12 +4,22 @@ import com.mesosphere.sdk.dcos.secrets.Secret;
 import com.mesosphere.sdk.dcos.secrets.SecretsException;
 
 import java.io.IOException;
+import java.util.Collection;
 
 /**
  * Client for communicating with DC/OS secret service API.
  * {@see https://docs.mesosphere.com/1.9/security/secrets/secrets-api/#api-reference}
  */
 public interface SecretsClient {
+
+    /**
+     * List all secrets for given path.
+     * @param path
+     * @return
+     * @throws IOException
+     * @throws SecretsException
+     */
+    Collection<String> list(String path) throws IOException, SecretsException;
 
     /**
      * Create a new secret.

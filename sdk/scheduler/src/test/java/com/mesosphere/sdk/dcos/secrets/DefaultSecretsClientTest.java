@@ -18,10 +18,12 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.Collection;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +32,7 @@ public class DefaultSecretsClientTest {
 
     @Mock private HttpClient httpClient;
     @Mock private HttpResponse httpResponse;
+    @Mock private HttpEntity httpEntity;
     @Mock private StatusLine statusLine;
 
     @Before
@@ -48,6 +51,23 @@ public class DefaultSecretsClientTest {
         return client;
     }
 
+    private DefaultSecretsClient createClientWithJsonContent(String content) throws IOException {
+        DefaultSecretsClient client = new DefaultSecretsClient(Executor.newInstance(httpClient));
+
+        when(statusLine.getStatusCode()).thenReturn(200);
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(httpResponse.getEntity()).thenReturn(httpEntity);
+        // Because of how CA client reads entity twice create 2 responses that represent same buffer.
+        when(httpEntity.getContent()).thenReturn(
+                new ByteArrayInputStream(content.getBytes("UTF-8")),
+                new ByteArrayInputStream(content.getBytes("UTF-8")));
+        when(httpClient.execute(
+                Mockito.any(HttpUriRequest.class),
+                Mockito.any(HttpContext.class))).thenReturn(httpResponse);
+
+        return client;
+    }
+
 
     private Secret createValidSecret() {
         return new Secret.Builder()
@@ -57,6 +77,29 @@ public class DefaultSecretsClientTest {
                 .created("created")
                 .labels(Arrays.asList("one", "two"))
                 .build();
+    }
+
+    @Test
+    public void testListValidResponse() throws Exception {
+        DefaultSecretsClient client = createClientWithJsonContent("{'array':['one','two']}");
+        Collection<String> secrets = client.list("test");
+        Assert.assertTrue(secrets.size() == 2);
+        Assert.assertTrue(secrets.contains("one"));
+        Assert.assertTrue(secrets.contains("two"));
+    }
+
+    @Test(expected = ForbiddenException.class)
+    public void testListWithoutPermission() throws Exception {
+        when(statusLine.getStatusCode()).thenReturn(403);
+        DefaultSecretsClient client = createClientWithStatusLine(statusLine);
+        client.list("test");
+    }
+
+    @Test(expected = NotFoundException.class)
+    public void testListNotFound() throws Exception {
+        when(statusLine.getStatusCode()).thenReturn(404);
+        DefaultSecretsClient client = createClientWithStatusLine(statusLine);
+        client.list("test");
     }
 
     @Test

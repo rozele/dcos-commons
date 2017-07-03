@@ -4,14 +4,19 @@ import com.google.common.annotations.VisibleForTesting;
 import com.mesosphere.sdk.dcos.DcosConstants;
 import com.mesosphere.sdk.dcos.SecretsClient;
 import com.mesosphere.sdk.dcos.http.URLHelper;
+import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
+import org.apache.http.client.fluent.ContentResponseHandler;
 import org.apache.http.client.fluent.Executor;
 import org.apache.http.client.fluent.Request;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 import org.json.JSONObject;
 
 import java.io.IOException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /**
  * Default secrets client.
@@ -39,6 +44,25 @@ public class DefaultSecretsClient implements SecretsClient {
 
     public DefaultSecretsClient(Executor executor) {
         this("default", executor);
+    }
+
+    @Override
+    public Collection<String> list(String path) throws IOException, SecretsException {
+        URL url = urlForPath(String.format("%s?list=true", path));
+        Request httpRequest = Request.Get(url.toString());
+        HttpResponse response = httpExecutor.execute(httpRequest).returnResponse();
+
+        handleResponseStatusLine(response.getStatusLine(), 200, path);
+
+        String responseContent = new ContentResponseHandler().handleEntity(response.getEntity()).asString();
+        JSONObject data = new JSONObject(responseContent);
+
+        ArrayList<String> secrets = new ArrayList<>();
+        data.getJSONArray("array")
+                .iterator()
+                .forEachRemaining(secret -> secrets.add((String) secret));
+
+        return secrets;
     }
 
     @Override
