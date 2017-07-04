@@ -2,6 +2,7 @@ package com.mesosphere.sdk.specification.yaml;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -116,6 +117,7 @@ public class RawTask {
     }
 
     public List<RawTransportEncryption> getTransportEncryption() {
-        return transportEncryption;
+        return transportEncryption == null ?
+                Collections.emptyList() : transportEncryption;
     }
 }
