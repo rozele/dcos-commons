@@ -66,7 +66,7 @@ public class DefaultTaskSpec implements TaskSpec {
         this.readinessCheckSpec = readinessCheckSpec;
         this.configFiles = (configFiles != null) ? configFiles : Collections.emptyList();
         this.discoverySpec = discoverySpec;
-        this.transportEncryption = transportEncryption;
+        this.transportEncryption = (transportEncryption != null) ? transportEncryption : Collections.emptyList();
     }
 
     private DefaultTaskSpec(Builder builder) {
