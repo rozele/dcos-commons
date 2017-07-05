@@ -21,7 +21,8 @@ def configure_package(configure_universe):
         install.uninstall(PACKAGE_NAME)
 
 
-def setup_function(function):
+@pytest.fixture(autouse=True)
+def pre_test_setup():
     check_healthy()
 
 

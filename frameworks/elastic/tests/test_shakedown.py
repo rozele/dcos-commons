@@ -24,7 +24,8 @@ def configure_package(configure_universe):
         install.uninstall(FOLDERED_SERVICE_NAME, package_name=PACKAGE_NAME)
 
 
-def setup_function(function):
+@pytest.fixture(autouse=True)
+def pre_test_setup():
     tasks.check_running(FOLDERED_SERVICE_NAME, DEFAULT_TASK_COUNT)
     wait_for_expected_nodes_to_exist(service_name=FOLDERED_SERVICE_NAME)
 

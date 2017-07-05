@@ -30,8 +30,8 @@ def configure_package(configure_universe):
     finally:
         install.uninstall(FOLDERED_SERVICE_NAME, package_name=PACKAGE_NAME)
 
-
-def setup_function(function):
+@pytest.fixture(autouse=True)
+def pre_test_setup():
     check_healthy()
 
 
