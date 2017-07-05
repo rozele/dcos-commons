@@ -17,20 +17,22 @@ from tests.config import (
 )
 
 
-def setup_module(module):
-    install.uninstall(PACKAGE_NAME)
-    utils.gc_frameworks()
-    options = {
-        "service": {
-            "spec_file": "examples/overlay.yml"
+@pytest.fixture(scope='module', autouse=True)
+def configure_package(configure_universe):
+    try:
+        install.uninstall(PACKAGE_NAME)
+        utils.gc_frameworks()
+        options = {
+            "service": {
+                "spec_file": "examples/overlay.yml"
+            }
         }
-    }
 
-    install.install(PACKAGE_NAME, 1, additional_options=options)
+        install.install(PACKAGE_NAME, 1, additional_options=options)
 
-
-def teardown_module(module):
-    install.uninstall(PACKAGE_NAME)
+        yield # let the test session execute
+    finally:
+        install.uninstall(PACKAGE_NAME)
 
 
 # test suite constants

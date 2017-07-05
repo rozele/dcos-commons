@@ -6,20 +6,22 @@ import sdk_networks as networks
 from tests.config import *
 
 
-def setup_module(module):
-    install.uninstall(PACKAGE_NAME)
-    utils.gc_frameworks()
-    install.install(PACKAGE_NAME, DEFAULT_TASK_COUNT,
-                    additional_options=networks.ENABLE_VIRTUAL_NETWORKS_OPTIONS)
+@pytest.fixture(scope='module', autouse=True)
+def configure_package(configure_universe):
+    try:
+        install.uninstall(PACKAGE_NAME)
+        utils.gc_frameworks()
+        install.install(PACKAGE_NAME, DEFAULT_TASK_COUNT,
+                        additional_options=networks.ENABLE_VIRTUAL_NETWORKS_OPTIONS)
+
+        yield # let the test session execute
+    finally:
+        install.uninstall(PACKAGE_NAME)
 
 
 def setup_function(function):
     tasks.check_running(PACKAGE_NAME, DEFAULT_TASK_COUNT)
     wait_for_expected_nodes_to_exist()
-
-
-def teardown_module(module):
-    install.uninstall(PACKAGE_NAME)
 
 
 @pytest.fixture
@@ -69,4 +71,3 @@ def test_endpoints_on_overlay():
         assert endpoint in observed_endpoints, "missing {} endpoint".format(endpoint)
         specific_endpoint = networks.get_and_test_endpoints(endpoint, PACKAGE_NAME, 4)
         networks.check_endpoints_on_overlay(specific_endpoint)
-

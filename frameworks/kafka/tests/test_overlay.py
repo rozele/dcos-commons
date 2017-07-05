@@ -10,20 +10,22 @@ import sdk_utils as utils
 from tests.test_utils import  *
 
 
-def setup_module(module):
-    install.uninstall(SERVICE_NAME, PACKAGE_NAME)
-    utils.gc_frameworks()
+@pytest.fixture(scope='module', autouse=True)
+def configure_package(configure_universe):
+    try:
+        install.uninstall(SERVICE_NAME, PACKAGE_NAME)
+        utils.gc_frameworks()
 
-    install.install(
-        PACKAGE_NAME,
-        DEFAULT_BROKER_COUNT,
-        service_name=SERVICE_NAME,
-        additional_options=networks.ENABLE_VIRTUAL_NETWORKS_OPTIONS)
-    plan.wait_for_completed_deployment(PACKAGE_NAME)
+        install.install(
+            PACKAGE_NAME,
+            DEFAULT_BROKER_COUNT,
+            service_name=SERVICE_NAME,
+            additional_options=networks.ENABLE_VIRTUAL_NETWORKS_OPTIONS)
+        plan.wait_for_completed_deployment(PACKAGE_NAME)
 
-
-def teardown_module(module):
-    install.uninstall(SERVICE_NAME, PACKAGE_NAME)
+        yield # let the test session execute
+    finally:
+        install.uninstall(SERVICE_NAME, PACKAGE_NAME)
 
 
 @pytest.mark.overlay
