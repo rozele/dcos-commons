@@ -1,0 +1,28 @@
+name: {{FRAMEWORK_NAME}}
+scheduler:
+  principal: {{FRAMEWORK_PRINCIPAL}}
+pods:
+  tls:
+    count: {{HELLO_COUNT}}
+    user: {{SERVICE_USER}}
+    placement: {{HELLO_PLACEMENT}}
+    tasks:
+      node:
+        goal: RUNNING
+        cmd: "ls -lah && cat secure-tls-pod.crt && cat keystore.keystore && sleep $SLEEP_DURATION"
+        cpus: 0.1
+        memory: 256
+        env:
+          SLEEP_DURATION: {{SLEEP_DURATION}}
+        health-check:
+          cmd: stat secure-tls-pod.crt && stat keystore.keystore
+          interval: 5
+          grace-period: 30
+          delay: 0
+          timeout: 10
+          max-consecutive-failures: 3
+        transport-encryption:
+          - name: secure-tls-pod
+            type: TLS
+          - name: keystore
+            type: KEYSTORE
