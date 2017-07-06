@@ -14,7 +14,7 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.Date;
 
-public class StaticTokenProviderTest {
+public class ConstantTokenProviderTest {
 
     private String createToken() throws NoSuchAlgorithmException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
@@ -33,7 +33,7 @@ public class StaticTokenProviderTest {
     @Test
     public void testToken() throws IOException, NoSuchAlgorithmException {
         String testToken = createToken();
-        TokenProvider tokenProvider = new StaticTokenProvider(testToken);
+        TokenProvider tokenProvider = new ConstantTokenProvider(testToken);
         Assert.assertEquals(tokenProvider.getToken().getValue(), testToken);
     }
 

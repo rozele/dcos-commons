@@ -15,22 +15,23 @@ public interface CertificateAuthorityClient {
 
     /**
      * Create a new certificate from CSR by contacting certificate authority.
-     *
-     * @param csr
+     * @param csr A PEM encoded CSR as byte array
      * @return
      * @throws IOException
      * @throws CertificateException
+     * @throws CAException
      */
-    X509Certificate sign(byte[] csr) throws IOException, CertificateException, CAException;
+    X509Certificate sign(byte[] csr) throws Exception;
 
     /**
      * Retrieves complete certificate chain including a root CA certificate for given certificate.
-     * @param certificate
+     * @param certificate An end-entity X509Certificate
      * @return
      * @throws IOException
      * @throws CertificateException
+     * @throws CAException
      */
     Collection<X509Certificate> chainWithRootCert(
-            X509Certificate certificate) throws IOException, CertificateException, CAException;
+            X509Certificate certificate) throws Exception;
 
 }

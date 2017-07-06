@@ -119,18 +119,20 @@ public class DefaultSecretsClient implements SecretsClient {
             return;
         }
 
+        String exceptionMessage = String.format("[%s] %s", statusLine.getStatusCode(), statusLine.getReasonPhrase());
+
         switch (statusLine.getStatusCode()) {
             case 403:
-                throw new ForbiddenException(store, path);
+                throw new ForbiddenException(exceptionMessage, store, path);
 
             case 404:
-                throw new NotFoundException();
+                throw new NotFoundException(exceptionMessage, store, path);
 
             case 409:
-                throw new AlreadyExistsException();
+                throw new AlreadyExistsException("Secret already exists", store, path);
 
             default:
-                throw new SecretsException();
+                throw new SecretsException(exceptionMessage, store, path);
         }
     }
 

@@ -7,7 +7,7 @@ import com.mesosphere.sdk.offer.InvalidRequirementException;
 import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.offer.evaluate.security.SecretNameGenerator;
 import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsGenerator;
-import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersistor;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersister;
 import com.mesosphere.sdk.scheduler.plan.DefaultPodInstance;
 import com.mesosphere.sdk.scheduler.plan.PodInstanceRequirement;
 import com.mesosphere.sdk.scheduler.plan.PodInstanceRequirementTestUtils;
@@ -32,7 +32,7 @@ import static org.mockito.Mockito.*;
 public class TLSEvaluationStageTest {
 
     @Mock
-    private TLSArtifactsPersistor tlsArtifactsPersistorMock;
+    private TLSArtifactsPersister tlsArtifactsPersisterMock;
 
     @Mock
     private TLSArtifactsGenerator tlsArtifactsGeneratorMock;
@@ -76,7 +76,7 @@ public class TLSEvaluationStageTest {
         return new TLSEvaluationStage(
                 TestConstants.SERVICE_NAME,
                 TestConstants.TASK_NAME,
-                tlsArtifactsPersistorMock,
+                tlsArtifactsPersisterMock,
                 tlsArtifactsGeneratorMock);
     }
 
@@ -124,11 +124,11 @@ public class TLSEvaluationStageTest {
         // Check that all TLS related methods were called
         verify(tlsArtifactsGeneratorMock, times(1))
                 .generate();
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .cleanUpSecrets(Matchers.any());
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .isArtifactComplete(Matchers.any());
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .persist(Matchers.any(), Matchers.any());
 
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
@@ -170,11 +170,11 @@ public class TLSEvaluationStageTest {
         // Check that all TLS related methods were called
         verify(tlsArtifactsGeneratorMock, times(1))
                 .generate();
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .cleanUpSecrets(Matchers.any());
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .isArtifactComplete(Matchers.any());
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .persist(Matchers.any(), Matchers.any());
 
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
@@ -192,7 +192,7 @@ public class TLSEvaluationStageTest {
 
     @Test
     public void testArtifactsExists() throws Exception {
-        when(tlsArtifactsPersistorMock
+        when(tlsArtifactsPersisterMock
                         .isArtifactComplete(Matchers.any())).thenReturn(true);
 
         ArrayList<TransportEncryptionSpec> transportEncryptionSpecs = new ArrayList<>();
@@ -219,11 +219,11 @@ public class TLSEvaluationStageTest {
         // Check that all TLS related methods were called
         verify(tlsArtifactsGeneratorMock, never())
                 .generate();
-        verify(tlsArtifactsPersistorMock, never())
+        verify(tlsArtifactsPersisterMock, never())
                 .cleanUpSecrets(Matchers.any());
-        verify(tlsArtifactsPersistorMock, times(1))
+        verify(tlsArtifactsPersisterMock, times(1))
                 .isArtifactComplete(Matchers.any());
-        verify(tlsArtifactsPersistorMock, never())
+        verify(tlsArtifactsPersisterMock, never())
                 .persist(Matchers.any(), Matchers.any());
 
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
@@ -241,8 +241,8 @@ public class TLSEvaluationStageTest {
 
     @Test
     public void testFailure() throws Exception {
-        doThrow(new SecretsException()).
-            when(tlsArtifactsPersistorMock).cleanUpSecrets(Matchers.any());
+        doThrow(new SecretsException("test", "store", "path")).
+            when(tlsArtifactsPersisterMock).cleanUpSecrets(Matchers.any());
 
         ArrayList<TransportEncryptionSpec> transportEncryptionSpecs = new ArrayList<>();
         transportEncryptionSpecs.add(new DefaultTransportEncryptionSpec

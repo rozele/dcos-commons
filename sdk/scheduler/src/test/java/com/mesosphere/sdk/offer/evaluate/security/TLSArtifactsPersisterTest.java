@@ -21,7 +21,7 @@ import java.util.List;
 
 import static org.mockito.Mockito.*;
 
-public class TLSArtifactsPersistorTest {
+public class TLSArtifactsPersisterTest {
 
     @Mock
     private SecretsClient secretsClientMock;
@@ -46,7 +46,7 @@ public class TLSArtifactsPersistorTest {
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                 "serviceName", "taskName", "name");
 
-        TLSArtifactsPersistor persister = new TLSArtifactsPersistor(
+        TLSArtifactsPersister persister = new TLSArtifactsPersister(
                 secretsClientMock, "serviceName");
 
         TLSArtifacts tlsArtifacts = new TLSArtifacts(
@@ -84,7 +84,7 @@ public class TLSArtifactsPersistorTest {
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                 "serviceName", "taskName", "name");
 
-        TLSArtifactsPersistor persister = new TLSArtifactsPersistor(
+        TLSArtifactsPersister persister = new TLSArtifactsPersister(
                 secretsClientMock, "serviceName");
 
         List<String> list = Arrays.asList("private-key", "certificate");
@@ -101,7 +101,7 @@ public class TLSArtifactsPersistorTest {
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                 "serviceName", "taskName", "name");
 
-        TLSArtifactsPersistor persister = new TLSArtifactsPersistor(
+        TLSArtifactsPersister persister = new TLSArtifactsPersister(
                 secretsClientMock, "serviceName");
 
         List<String> list = Arrays.asList(
@@ -119,7 +119,7 @@ public class TLSArtifactsPersistorTest {
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                 "serviceName", "taskName", "name");
 
-        TLSArtifactsPersistor persister = new TLSArtifactsPersistor(
+        TLSArtifactsPersister persister = new TLSArtifactsPersister(
                 secretsClientMock, "serviceName");
 
         List<String> list = Arrays.asList( "certificate");
@@ -138,7 +138,7 @@ public class TLSArtifactsPersistorTest {
         SecretNameGenerator secretNameGenerator = new SecretNameGenerator(
                 "serviceName", "taskName", "name");
 
-        TLSArtifactsPersistor persister = new TLSArtifactsPersistor(
+        TLSArtifactsPersister persister = new TLSArtifactsPersister(
                 secretsClientMock, "serviceName");
 
         List<String> list = Collections.emptyList();

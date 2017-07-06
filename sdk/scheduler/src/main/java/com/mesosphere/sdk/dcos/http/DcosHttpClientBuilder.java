@@ -27,7 +27,6 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
      * @return
      */
     public DcosHttpClientBuilder disableTLSVerification() throws NoSuchAlgorithmException {
-
         TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
             public X509Certificate[] getAcceptedIssuers() {
                 return null;
@@ -54,7 +53,6 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
                 .setSSLContext(sslContext);
 
         return this;
-
     }
 
     /**
@@ -63,12 +61,9 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
      * @return
      */
     public DcosHttpClientBuilder setTokenProvider(TokenProvider provider) {
-
         this.addInterceptorFirst((HttpRequestInterceptor) (request, context) ->
                 request.addHeader("Authorization", String.format("token=%s", provider.getToken().getValue())));
-
         return this;
-
     }
 
 
@@ -78,12 +73,9 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
      * @return
      */
     public DcosHttpClientBuilder setLogger(Logger logger) {
-
         this.addInterceptorLast((HttpRequestInterceptor) (request, context) ->
                 logger.info(request.toString()));
-
         return this;
-
     }
 
 
@@ -93,15 +85,12 @@ public class DcosHttpClientBuilder extends org.apache.http.impl.client.HttpClien
      * @return
      */
     public DcosHttpClientBuilder setDefaultConnectionTimeout(int connectionTimeout) {
-
         RequestConfig requestConfig = RequestConfig
                 .custom()
                 .setConnectionRequestTimeout(connectionTimeout)
                 .build();
         this.setDefaultRequestConfig(requestConfig);
-
         return this;
-
     }
 
 }

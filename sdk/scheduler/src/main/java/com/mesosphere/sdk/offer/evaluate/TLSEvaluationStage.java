@@ -14,7 +14,7 @@ import com.mesosphere.sdk.offer.MesosResourcePool;
 import com.mesosphere.sdk.offer.evaluate.security.SecretNameGenerator;
 import com.mesosphere.sdk.offer.evaluate.security.TLSArtifacts;
 import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsGenerator;
-import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersistor;
+import com.mesosphere.sdk.offer.evaluate.security.TLSArtifactsPersister;
 import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.TaskSpec;
 import com.mesosphere.sdk.specification.TransportEncryptionSpec;
@@ -50,17 +50,17 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
 
     private String serviceName;
     private String taskName;
-    private TLSArtifactsPersistor tlsArtifactsPersistor;
+    private TLSArtifactsPersister tlsArtifactsPersister;
     private TLSArtifactsGenerator tlsArtifactsGenerator;
 
     public TLSEvaluationStage(
             String serviceName,
             String taskName,
-            TLSArtifactsPersistor tlsArtifactsPersistor,
+            TLSArtifactsPersister tlsArtifactsPersister,
             TLSArtifactsGenerator tlsArtifactsGenerator) {
         this.serviceName = serviceName;
         this.taskName = taskName;
-        this.tlsArtifactsPersistor = tlsArtifactsPersistor;
+        this.tlsArtifactsPersister = tlsArtifactsPersister;
         this.tlsArtifactsGenerator = tlsArtifactsGenerator;
     }
 
@@ -77,11 +77,11 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
                     transportEncryptionName);
 
             try {
-                if (!tlsArtifactsPersistor.isArtifactComplete(secretNameGenerator)) {
-                    tlsArtifactsPersistor.cleanUpSecrets(secretNameGenerator);
+                if (!tlsArtifactsPersister.isArtifactComplete(secretNameGenerator)) {
+                    tlsArtifactsPersister.cleanUpSecrets(secretNameGenerator);
 
                     TLSArtifacts tlsArtifacts = this.tlsArtifactsGenerator.generate();
-                    tlsArtifactsPersistor.persist(secretNameGenerator, tlsArtifacts);
+                    tlsArtifactsPersister.persist(secretNameGenerator, tlsArtifacts);
                 } else {
                     logger.info(
                             String.format(
@@ -176,7 +176,7 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
         private KeyPairGenerator keyPairGenerator;
 
         private TLSArtifactsGenerator tlsArtifactsGenerator;
-        private TLSArtifactsPersistor tlsArtifactsPersistor;
+        private TLSArtifactsPersister tlsArtifactsPersister;
 
         public static Builder fromEnvironment()
                 throws IOException, InvalidKeySpecException, NoSuchAlgorithmException {
@@ -256,14 +256,14 @@ public class TLSEvaluationStage implements OfferEvaluationStage {
             return this;
         }
 
-        public Builder setTlsArtifactsPersistor(TLSArtifactsPersistor tlsArtifactsPersistor) {
-            this.tlsArtifactsPersistor = tlsArtifactsPersistor;
+        public Builder setTlsArtifactsPersister(TLSArtifactsPersister tlsArtifactsPersister) {
+            this.tlsArtifactsPersister = tlsArtifactsPersister;
             return this;
         }
 
-        private TLSArtifactsPersistor getTLSArtifactsPersister() {
-            return tlsArtifactsPersistor == null ?
-                    new TLSArtifactsPersistor(getSecretsClient(), serviceName) : tlsArtifactsPersistor;
+        private TLSArtifactsPersister getTLSArtifactsPersister() {
+            return tlsArtifactsPersister == null ?
+                    new TLSArtifactsPersister(getSecretsClient(), serviceName) : tlsArtifactsPersister;
         }
 
         private TLSArtifactsGenerator getTLSArtifactsGenerator() {

@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.security.cert.CertificateException;
@@ -53,7 +52,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
     }
 
     @Override
-    public X509Certificate sign(byte[] csr) throws IOException, CertificateException, CAException {
+    public X509Certificate sign(byte[] csr) throws Exception {
         JSONObject data = new JSONObject();
         data.put("certificate_request", new String(csr, Charset.forName("UTF-8")));
         data.put("profile", "");
@@ -81,7 +80,7 @@ public class DefaultCAClient implements CertificateAuthorityClient {
 
     @Override
     public Collection<X509Certificate> chainWithRootCert(
-            X509Certificate certificate) throws IOException, CertificateException, CAException {
+            X509Certificate certificate) throws Exception {
         JSONObject data = new JSONObject();
         data.put("certificate", PEMHelper.toPEM(certificate));
 

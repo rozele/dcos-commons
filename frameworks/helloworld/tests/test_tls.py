@@ -104,3 +104,5 @@ def test_tls_basics(service_account):
     # default is serial strategy, hello deploys first
     # launch will fail if secrets are not available or not accessible
     plan.wait_for_completed_deployment(PACKAGE_NAME)
+
+    install.uninstall(PACKAGE_NAME)

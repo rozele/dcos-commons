@@ -1,6 +1,6 @@
 package com.mesosphere.sdk.dcos.ca;
 
-import com.mesosphere.sdk.dcos.auth.StaticTokenProvider;
+import com.mesosphere.sdk.dcos.auth.ConstantTokenProvider;
 import com.mesosphere.sdk.dcos.http.DcosHttpClientBuilder;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -80,7 +80,7 @@ public class DefaultCAClientTest {
     private Executor createAuthenticatedExecutor() throws NoSuchAlgorithmException {
         HttpClient httpClient = new DcosHttpClientBuilder()
                 .disableTLSVerification()
-                .setTokenProvider(new StaticTokenProvider(TOKEN))
+                .setTokenProvider(new ConstantTokenProvider(TOKEN))
                 .build();
         return Executor.newInstance(httpClient);
     }

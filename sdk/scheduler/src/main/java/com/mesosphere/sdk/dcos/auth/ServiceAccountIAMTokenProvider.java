@@ -28,10 +28,10 @@ import java.util.Date;
  */
 public class ServiceAccountIAMTokenProvider implements TokenProvider {
 
-    private URL iamUrl;
-    private String uid;
-    private Executor httpExecutor;
-    private Algorithm signatureAlgorithm;
+    private final URL iamUrl;
+    private final String uid;
+    private final Executor httpExecutor;
+    private final Algorithm signatureAlgorithm;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 

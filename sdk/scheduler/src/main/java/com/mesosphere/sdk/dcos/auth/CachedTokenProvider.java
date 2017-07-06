@@ -7,19 +7,16 @@ import java.util.Optional;
 /**
  * CachedTokenProvider retrieves token from underlying provider and caches the value. It automatically triggers
  * getToken() method on underlying provider when token is about to expire.
- *
- * // TODO(mh): This could be also running in a separate thread in background.
- * // TODO(mh): Does this needs to be threadsafe?
  */
 public class CachedTokenProvider implements TokenProvider {
 
-    private TokenProvider provider;
+    private final TokenProvider provider;
     private Optional<Token> token;
-    private int triggerRefreshBeforeSeconds;
+    private final int ttlSeconds;
 
-    public CachedTokenProvider(TokenProvider provider, int triggerRefreshBeforeSeconds) {
+    public CachedTokenProvider(TokenProvider provider, int ttlSeconds) {
         this.provider = provider;
-        this.triggerRefreshBeforeSeconds = triggerRefreshBeforeSeconds;
+        this.ttlSeconds = ttlSeconds;
         this.token = Optional.empty();
     }
 
@@ -28,14 +25,13 @@ public class CachedTokenProvider implements TokenProvider {
     }
 
     @Override
-    public Token getToken() throws IOException {
-
+    public synchronized Token getToken() throws IOException {
         if (token.isPresent()) {
 
             Instant triggerRefresh = token.get()
                     .getExpiration()
                     .toInstant()
-                    .minusSeconds(this.triggerRefreshBeforeSeconds);
+                    .minusSeconds(this.ttlSeconds);
 
             if (triggerRefresh.isAfter(Instant.now())) {
                 return token.get();

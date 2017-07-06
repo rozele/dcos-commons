@@ -47,60 +47,56 @@ public class TLSArtifactsGenerator {
         this.certificateAuthorityClient = certificateAuthorityClient;
     }
 
-    public TLSArtifacts generate()
-            throws IOException, KeyStoreException, CertificateException, CAException,
-            OperatorCreationException, NoSuchAlgorithmException {
+    public TLSArtifacts generate() throws Exception {
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
-            KeyPair keyPair = keyPairGenerator.generateKeyPair();
+        // Get new end-entity certificate from CA
+        X509Certificate certificate = certificateAuthorityClient.sign(generateCSR(keyPair));
 
-            // Get new end-entity certificate from CA
-            X509Certificate certificate = certificateAuthorityClient.sign(generateCSR(keyPair));
+        // Get end-entity bundle with Root CA certificate
+        ArrayList<X509Certificate> certificateChain = certificateChain = (ArrayList<X509Certificate>)
+                certificateAuthorityClient.chainWithRootCert(certificate);
 
-            // Get end-entity bundle with Root CA certificate
-            ArrayList<X509Certificate> certificateChain = (ArrayList<X509Certificate>)
-                    certificateAuthorityClient.chainWithRootCert(certificate);
+        // Build end-entity certificate with CA chain without Root CA certificate
+        ArrayList<X509Certificate> endEntityCertificateWithChain = new ArrayList<>();
+        endEntityCertificateWithChain.add(certificate);
+        // Add all possible certificates in the chain
+        if (certificateChain.size() > 1) {
+            endEntityCertificateWithChain.addAll(certificateChain.subList(0, certificateChain.size() - 1));
+        }
+        // Convert to pem and join to a single string
+        String certPEM = endEntityCertificateWithChain.stream()
+                .map(cert -> {
+                    try {
+                        return PEMHelper.toPEM(cert);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                })
+                .collect(Collectors.joining());
 
-            // Build end-entity certificate with CA chain without Root CA certificate
-            ArrayList<X509Certificate> endEntityCertificateWithChain = new ArrayList<>();
-            endEntityCertificateWithChain.add(certificate);
-            // Add all possible certificates in the chain
-            if (certificateChain.size() > 1) {
-                endEntityCertificateWithChain.addAll(certificateChain.subList(0, certificateChain.size() - 1));
-            }
-            // Convert to pem and join to a single string
-            String certPEM = endEntityCertificateWithChain.stream()
-                    .map(cert -> {
-                        try {
-                            return PEMHelper.toPEM(cert);
-                        } catch (IOException e) {
-                            throw new UncheckedIOException(e);
-                        }
-                    })
-                    .collect(Collectors.joining());
+        // Serialize private key and Root CA cert to PEM format
+        String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
+        String rootCACertPEM = PEMHelper.toPEM(
+                certificateChain.get(certificateChain.size() - 1));
 
-            // Serialize private key and Root CA cert to PEM format
-            String privateKeyPEM = PEMHelper.toPEM(keyPair.getPrivate());
-            String rootCACertPEM = PEMHelper.toPEM(
-                    certificateChain.get(certificateChain.size() - 1));
+        // Create keystore and trust store
+        KeyStore keyStore = createEmptyKeyStore();
+        // TODO(mh): Make configurable "cert"
+        keyStore.setCertificateEntry("cert", certificate);
 
-            // Create keystore and trust store
-            KeyStore keyStore = createEmptyKeyStore();
-            // TODO(mh): Make configurable "cert"
-            keyStore.setCertificateEntry("cert", certificate);
+        // KeyStore expects complete chain with end-entity certificate
+        certificateChain.add(0, certificate);
+        Certificate[] keyStoreChain = certificateChain.toArray(
+                new Certificate[certificateChain.size()]);
 
-            // KeyStore expects complete chain with end-entity certificate
-            certificateChain.add(0, certificate);
-            Certificate[] keyStoreChain = certificateChain.toArray(
-                    new Certificate[certificateChain.size()]);
+        // TODO(mh): Make configurable "private-key"
+        keyStore.setKeyEntry("private-key", keyPair.getPrivate(), new char[0], keyStoreChain);
 
-            // TODO(mh): Make configurable "private-key"
-            keyStore.setKeyEntry("private-key", keyPair.getPrivate(), new char[0], keyStoreChain);
+        KeyStore trustStore = createEmptyKeyStore();
+        trustStore.setCertificateEntry("dcos-root", certificateChain.get(certificateChain.size() - 1));
 
-            KeyStore trustStore = createEmptyKeyStore();
-            trustStore.setCertificateEntry("dcos-root", certificateChain.get(certificateChain.size() - 1));
-
-            return new TLSArtifacts(certPEM, privateKeyPEM, rootCACertPEM, keyStore, trustStore);
-
+        return new TLSArtifacts(certPEM, privateKeyPEM, rootCACertPEM, keyStore, trustStore);
     }
 
     private KeyStore createEmptyKeyStore()
