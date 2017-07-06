@@ -20,10 +20,25 @@ type zkHandler struct {
 	localPath string
 
 	// flags
-	servers []string
-	recurse bool
-	raw     bool
-	force   bool
+	servers      []string
+	recurse      bool
+	formatString string
+	force        bool
+}
+
+func getFormat(relZkPath string, data []byte, formatArg string) Format {
+	switch formatArg {
+	case "auto":
+		return autodetectFormat(relZkPath, data)
+	case "binary":
+		return Binary
+	case "text":
+		return Text
+	case "proto":
+		return Proto
+	}
+	log.Fatalf("Unsupported format type: %s", formatArg)
+	return Binary // arbitrary value for happy compiler
 }
 
 func (cmd *zkHandler) connect() *ZkAccess {
@@ -90,10 +105,9 @@ func (cmd *zkHandler) runGet(c *kingpin.ParseContext) error {
 			log.Fatalf("Unable to write %d bytes from %s to local file %s: %s",
 				len(data), zk.AbsPath(cmd.zkPath), cmd.localPath, err)
 		}
-	} else if cmd.raw {
-		fmt.Print(string(data))
 	} else {
-		fmt.Printf("%s", string(convertZkToDisk(cmd.zkPath, data)))
+		zkFormat := getFormat(cmd.zkPath, data, cmd.formatString)
+		fmt.Print(string(convertZkToDisk(cmd.zkPath, data, zkFormat)))
 	}
 	fmt.Fprintf(os.Stderr, "\n")
 	return nil
@@ -101,39 +115,46 @@ func (cmd *zkHandler) runGet(c *kingpin.ParseContext) error {
 
 // put|set <service> <path> [file] -- confirm/backup/write content
 func (cmd *zkHandler) runPut(c *kingpin.ParseContext) error {
-	zk := cmd.connect()
-	defer zk.Close()
-	oldDataZk, version, err := zk.Get(cmd.zkPath)
-	if err != nil && err != zklib.ErrNoNode {
-		log.Fatalf("Failed to retrieve data from %s: %s", zk.AbsPath(cmd.zkPath), err)
-		oldDataZk = nil
-	}
-
 	var newDataDisk []byte
+	var err error
 	if len(cmd.localPath) > 0 {
+		// input from file
 		newDataDisk, err = ioutil.ReadFile(cmd.localPath)
 		if err != nil {
 			log.Fatalf("Failed to access local file %s: %s", cmd.localPath, err)
 		}
 	} else {
+		// input from stdin
 		newDataDisk, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			log.Fatalf("Failed to read from stdin for zk put. Did you mean to provide a filename to read from?: %s", err)
 		}
 	}
+	newDataZkFormat := getFormat(cmd.zkPath, newDataDisk, cmd.formatString) // TODO is this is the format on disk, rather than on ZK?
 
-	var newDataZk []byte
-	if cmd.raw {
-		newDataZk = newDataDisk
-	} else {
-		newDataZk = convertDiskToZk(cmd.zkPath, newDataDisk)
+	zk := cmd.connect()
+	defer zk.Close()
+	oldDataZk, version, err := zk.Get(cmd.zkPath)
+	if err != nil && err != zklib.ErrNoNode {
+		log.Fatalf("Failed to retrieve data from %s: %s", zk.AbsPath(cmd.zkPath), err)
 	}
 
+	// Safety check: detect format mismatches. User must manually delete old data if a mismatch is detected.
+	if oldDataZk != nil {
+		oldDataZkFormat := autodetectFormat(cmd.zkPath, oldDataZk)
+		if oldDataZkFormat != newDataZkFormat {
+			// prior data format doesn't match new data format.
+			// avoid breaking things, require the user to manually delete the old data.
+			log.Fatalf("New data format %s doesn't match current ZK data format %s. To change the format, the current ZK data must be removed before writing new data.", newDataZkFormat, oldDataZkFormat)
+		}
+	}
+
+	newDataZk := convertDiskToZk(cmd.zkPath, newDataDisk, newDataZkFormat)
 	if bytes.Equal(oldDataZk, newDataZk) {
 		fmt.Printf("Content of %s matches requested value. Nothing to do, exiting.\n", zk.AbsPath(cmd.zkPath))
 		return nil
 	}
-	fmt.Print(getDiff(cmd.zkPath, zk.AbsPath(cmd.zkPath), oldDataZk, newDataZk))
+	fmt.Print(getDiff(cmd.zkPath, zk.AbsPath(cmd.zkPath), oldDataZk, newDataZk, newDataZkFormat))
 	if !cmd.force && !confirmationPrompt(fmt.Sprintf("Apply the above changes to %s?", zk.AbsPath(cmd.zkPath))) {
 		return nil
 	}
@@ -171,7 +192,7 @@ func (cmd *zkHandler) runDelete(c *kingpin.ParseContext) error {
 		log.Fatalf("Failed to retrieve current data from %s (skip read with --force): %s", zk.AbsPath(cmd.zkPath), err)
 	}
 	fmt.Printf("Current content of %s:\n", cmd.zkPath)
-	fmt.Print(convertZkToPrint(cmd.zkPath, data))
+	fmt.Print(convertZkToPrint(cmd.zkPath, data, getFormat(cmd.zkPath, data, cmd.formatString)))
 
 	if !cmd.force && !confirmationPrompt(fmt.Sprintf(
 		"Delete all data in %s including any nested children?", zk.AbsPath(cmd.zkPath))) {
@@ -213,8 +234,7 @@ func handleZkSection(app *kingpin.Application) {
 	// config <list, show, target, target_id>
 	cmd := &zkHandler{}
 	zk := app.Command("zk", "Access and overwrite zookeeper data")
-	// TODO master.mesos:
-	zk.Flag("servers", "Zookeeper hostname").Default("localhost:2181").StringsVar(&cmd.servers)
+	zk.Flag("servers", "Zookeeper hostname").Default("localhost:2181").StringsVar(&cmd.servers) // TODO use master.mesos once done testing
 	zk.Flag("service", "DC/OS Service to be operated against").Envar("DCOS_SERVICE").Required().StringVar(&cmd.service)
 
 	listCmd := zk.Command("list", "List entries within a given path").Alias("ls").Action(cmd.runList)
@@ -222,15 +242,15 @@ func handleZkSection(app *kingpin.Application) {
 	listCmd.Arg("path", "ZK path to list children of (default: /).").StringVar(&cmd.zkPath)
 
 	getCmd := zk.Command("get", "Downloads the content of a given entry").Action(cmd.runGet)
-	getCmd.Flag("raw", "Skips automatic JSON or hexdump conversion").BoolVar(&cmd.raw)
+	getCmd.Flag("format", "Specifies the format of the data to be retrieved, or 'auto' to autodetect").Default("auto").EnumVar(&cmd.formatString, "auto", "binary", "text", "proto")
 	getCmd.Arg("path", "ZK path to retrieve").Required().StringVar(&cmd.zkPath)
-	getCmd.Arg("filepath", "Local to write raw data to (implies --raw)").StringVar(&cmd.localPath)
+	getCmd.Arg("filepath", "Local file to write data to, or stdout if unspecified").StringVar(&cmd.localPath)
 
 	putCmd := zk.Command("set", "Stores the content of a file to a given entry, overwriting existing data if any").Alias("put").Action(cmd.runPut)
 	putCmd.Flag("force", "Force the operation without confirmation").BoolVar(&cmd.force)
-	putCmd.Flag("raw", "Skips automatic conversion from JSON").BoolVar(&cmd.raw)
+	getCmd.Flag("format", "Specifies the format of the data to be written, or 'auto' to autodetect").Default("auto").EnumVar(&cmd.formatString, "auto", "binary", "text", "proto")
 	putCmd.Arg("path", "ZK path to write or overwrite").Required().StringVar(&cmd.zkPath)
-	putCmd.Arg("filepath", "Local file containing data to be written").StringVar(&cmd.localPath)
+	putCmd.Arg("filepath", "Local file containing data to be written, or stdin if unspecified").StringVar(&cmd.localPath)
 
 	deleteCmd := zk.Command("delete", "Deletes a single entry").Action(cmd.runDelete)
 	deleteCmd.Flag("force", "Force the operation without confirmation").BoolVar(&cmd.force)
